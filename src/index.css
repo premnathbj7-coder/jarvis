@@ -1,0 +1,56 @@
+@import "tailwindcss";
+
+:root {
+  --color-primary: #ef4444;
+  --color-primary-glow: rgba(239, 68, 68, 0.45);
+  --color-secondary: #eab308;
+  --color-secondary-glow: rgba(234, 179, 8, 0.45);
+  --color-hud-bg: rgba(24, 4, 9, 0.88);
+}
+
+body {
+  font-family: 'Rajdhani', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.font-hud {
+  font-family: 'Orbitron', monospace;
+}
+
+.font-mono-hud {
+  font-family: 'Share Tech Mono', monospace;
+}
+
+/* Custom scrollbars for futuristic look */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(20, 5, 8, 0.85);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(239, 68, 68, 0.4);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(250, 204, 21, 0.7);
+}
+
+@keyframes scanline {
+  0% { transform: translateY(-100%); }
+  100% { transform: translateY(1000%); }
+}
+
+.scanline-effect {
+  position: relative;
+  overflow: hidden;
+}
+.scanline-effect::after {
+  content: " ";
+  position: absolute;
+  top: 0; left: 0; right: 0; height: 3px;
+  background: linear-gradient(to bottom, transparent, rgba(250, 204, 21, 0.22), transparent);
+  animation: scanline 8s linear infinite;
+  pointer-events: none;
+}

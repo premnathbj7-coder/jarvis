@@ -1,0 +1,7 @@
+{
+  "name": "J.A.R.V.I.S. AI Assistant",
+  "description": "Futuristic AI desktop and web assistant with reactive glowing energy orb, local vector memory, system diagnostics, voice interaction, and productivity tools.",
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
