@@ -36,9 +36,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
   useEffect(() => {
     if (isOpen) {
       fetch('/api/settings')
-        .then((res) => res.json())
-        .then((data) => setSettings(data))
-        .catch(console.error);
+        .then((res) => {
+          if (res.ok) return res.json();
+          return null;
+        })
+        .then((data) => {
+          if (data) setSettings(data);
+        })
+        .catch(() => {});
     }
   }, [isOpen]);
 
@@ -57,8 +62,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ isOpen, onClose, o
         setSavedSuccess(true);
         setTimeout(() => setSavedSuccess(false), 2000);
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // Graceful error handling
     }
   };
 

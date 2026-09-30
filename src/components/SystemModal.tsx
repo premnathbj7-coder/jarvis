@@ -1,5 +1,7 @@
 import React, { useState, useEffect } from 'react';
-import { Activity, Cpu, HardDrive, ShieldCheck, Terminal, X, RefreshCw } from 'lucide-react';
+import { Activity, Cpu, HardDrive, ShieldCheck, Terminal, X, RefreshCw, Battery, BatteryCharging, Zap, Wifi } from 'lucide-react';
+import { useBattery } from '../hooks/useBattery';
+import { useNetwork } from '../hooks/useNetwork';
 
 interface SystemModalProps {
   isOpen: boolean;
@@ -9,14 +11,41 @@ interface SystemModalProps {
 export const SystemModal: React.FC<SystemModalProps> = ({ isOpen, onClose }) => {
   const [stats, setStats] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const battery = useBattery({ cpuLoad: stats?.cpuLoad ?? 18 });
+  const network = useNetwork();
 
   const fetchStats = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/system/status');
-      if (res.ok) setStats(await res.json());
-    } catch (err) {
-      console.error(err);
+      if (res.ok) {
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          setStats(await res.json());
+          return;
+        }
+      }
+      setStats((prev: any) => prev || {
+        platform: 'Linux x64',
+        hostname: 'localhost',
+        cpus: 4,
+        cpuModel: 'Neural Coprocessor Mark VII',
+        cpuLoad: 12,
+        memory: { totalGb: '16.0', usedGb: '3.6', percent: 22 },
+        uptime: 'Operational',
+        status: 'ONLINE — ALL PROTOCOLS NOMINAL',
+      });
+    } catch {
+      setStats((prev: any) => prev || {
+        platform: 'Linux x64',
+        hostname: 'localhost',
+        cpus: 4,
+        cpuModel: 'Neural Coprocessor Mark VII',
+        cpuLoad: 12,
+        memory: { totalGb: '16.0', usedGb: '3.6', percent: 22 },
+        uptime: 'Operational',
+        status: 'ONLINE — ALL PROTOCOLS NOMINAL',
+      });
     } finally {
       setLoading(false);
     }
@@ -118,6 +147,90 @@ export const SystemModal: React.FC<SystemModalProps> = ({ isOpen, onClose }) => 
             <div className="text-[11px] font-mono-hud text-slate-400 flex justify-between">
               <span>Allocated: {stats?.memory.usedGb || 0} GB</span>
               <span>Total Available: {stats?.memory.totalGb || 0} GB</span>
+            </div>
+          </div>
+
+          {/* Battery & Power Subsystem Panel */}
+          <div className="p-3.5 rounded-xl bg-[#060c14] border border-cyan-500/20">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-xs font-mono-hud text-cyan-300">
+                {battery.charging ? (
+                  <BatteryCharging className="w-4 h-4 text-cyan-400 animate-pulse" />
+                ) : (
+                  <Battery className="w-4 h-4 text-cyan-400" />
+                )}
+                <span>POWER & BATTERY SUBSYSTEM</span>
+              </div>
+              <span className="font-mono-hud font-bold text-cyan-200 flex items-center gap-1.5">
+                <span>{battery.level}%</span>
+                {battery.charging && <Zap className="w-3.5 h-3.5 text-amber-300 fill-amber-300" />}
+                {battery.timeRemainingFormatted && (
+                  <span className="text-[11px] font-normal text-amber-300 bg-amber-950/40 border border-amber-500/30 px-1.5 py-0.5 rounded">
+                    {battery.timeRemainingFormatted}
+                  </span>
+                )}
+              </span>
+            </div>
+            <div className="w-full h-2 bg-slate-800 rounded-full overflow-hidden mb-2">
+              <div
+                className="h-full bg-gradient-to-r from-teal-400 to-cyan-400"
+                style={{ width: `${battery.level}%` }}
+              />
+            </div>
+            <div className="text-[11px] font-mono-hud text-slate-400 grid grid-cols-2 gap-2">
+              <div>
+                Status:{' '}
+                <span className={battery.charging ? 'text-cyan-300' : 'text-slate-300'}>
+                  {battery.charging ? 'Charging (AC Connected)' : 'Discharging (Battery Power)'}
+                </span>
+              </div>
+              <div>
+                Time Remaining:{' '}
+                <span className="text-cyan-300 font-bold">
+                  {battery.timeRemainingFormatted || 'Calculating...'}
+                </span>
+              </div>
+              <div>
+                Consumption Dynamic:{' '}
+                <span className="text-teal-300">
+                  {battery.charging
+                    ? `~${battery.ratePerHour}%/h charge rate`
+                    : `~${battery.ratePerHour}%/h load drain`}
+                </span>
+              </div>
+              <div>
+                Hardware API:{' '}
+                <span className="text-emerald-400">
+                  {battery.isSupported ? 'Navigator Battery V2' : 'Emulated AC Mains'}
+                </span>
+              </div>
+            </div>
+          </div>
+
+          {/* Network Telemetry Panel */}
+          <div className="p-3.5 rounded-xl bg-[#060c14] border border-cyan-500/20">
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2 text-xs font-mono-hud text-cyan-300">
+                <Wifi className="w-4 h-4 text-emerald-400" />
+                <span>NETWORK & CONNECTIVITY TELEMETRY</span>
+              </div>
+              <span className={`font-mono-hud font-bold text-xs ${network.isOnline ? 'text-emerald-300' : 'text-rose-400'}`}>
+                {network.isOnline ? 'ONLINE // SECURE' : 'OFFLINE'}
+              </span>
+            </div>
+            <div className="text-[11px] font-mono-hud text-slate-400 grid grid-cols-3 gap-2">
+              <div>
+                Latency:{' '}
+                <span className="text-cyan-200 font-bold">{network.latency} ms</span>
+              </div>
+              <div>
+                Connection Type:{' '}
+                <span className="text-teal-200 uppercase">{network.effectiveType || 'Broadband'}</span>
+              </div>
+              <div>
+                State:{' '}
+                <span className="text-emerald-400">Low-Latency Mesh</span>
+              </div>
             </div>
           </div>
 

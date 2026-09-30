@@ -5,13 +5,20 @@ import fs from 'fs';
 import { fileURLToPath } from 'url';
 import os from 'os';
 import { GoogleGenAI } from '@google/genai';
+import {
+  detectLanguageAndStyle,
+  parseTranslationRequest,
+  executeLocalTranslation,
+  adaptCommandResultLanguage,
+  DetectedLanguage,
+} from './src/utils/languageEngine';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const app = express();
-const PORT = 3000;
-const HOST = '0.0.0.0';
+const PORT = Number(process.env.PORT) || 3000;
+const HOST = process.env.HOST || '0.0.0.0';
 
 app.use(cors());
 app.use(express.json());
@@ -476,6 +483,132 @@ const reminderStore: ReminderItem[] = [
 
 const timerStore: TimerItem[] = [];
 
+// Education & Academic Hub Stores
+export interface CourseItem {
+  id: string;
+  code: string;
+  name: string;
+  instructor: string;
+  schedule: string;
+  room: string;
+  attendance: number;
+  progress: number;
+  nextExam: string;
+  color: string;
+}
+
+export interface AssignmentItem {
+  id: string;
+  title: string;
+  courseCode: string;
+  dueDate: string;
+  priority: 'high' | 'medium' | 'low';
+  status: 'pending' | 'in_progress' | 'completed';
+  weight: string;
+}
+
+export interface EducationStats {
+  dailyStudyHoursGoal: number;
+  dailyStudyHoursDone: number;
+  streakDays: number;
+}
+
+const courseStore: CourseItem[] = [
+  {
+    id: 'course-1',
+    code: 'CS-301',
+    name: 'Advanced Algorithms & Data Structures',
+    instructor: 'Dr. Aris Thorne',
+    schedule: 'Mon, Wed 10:00 AM - 11:30 AM',
+    room: 'Stark Science Hall 4B',
+    attendance: 94,
+    progress: 75,
+    nextExam: 'Midterm in 4 days (Oct 3)',
+    color: 'cyan',
+  },
+  {
+    id: 'course-2',
+    code: 'MATH-240',
+    name: 'Linear Algebra & Differential Systems',
+    instructor: 'Prof. Elena Rostova',
+    schedule: 'Tue, Thu 01:30 PM - 03:00 PM',
+    room: 'Turing Math Wing 202',
+    attendance: 88,
+    progress: 68,
+    nextExam: 'Quiz on Eigenvalues this Friday',
+    color: 'purple',
+  },
+  {
+    id: 'course-3',
+    code: 'PHYS-202',
+    name: 'Quantum Mechanics & Wave Dynamics',
+    instructor: 'Dr. Samuel Bennett',
+    schedule: 'Mon, Fri 02:00 PM - 03:30 PM',
+    room: 'Dirac Quantum Lab 101',
+    attendance: 92,
+    progress: 70,
+    nextExam: 'Lab Project due in 8 days',
+    color: 'teal',
+  },
+  {
+    id: 'course-4',
+    code: 'AI-405',
+    name: 'Neural Networks & Foundation Models',
+    instructor: 'Stark AI Institute Fellow',
+    schedule: 'Wed, Fri 04:00 PM - 05:30 PM',
+    room: 'Cybernetics Virtual Hub',
+    attendance: 98,
+    progress: 82,
+    nextExam: 'Research Paper due in 10 days',
+    color: 'amber',
+  },
+];
+
+const assignmentStore: AssignmentItem[] = [
+  {
+    id: 'assign-1',
+    title: 'Implement Dijkstra & A* Pathfinding Algorithms in TypeScript',
+    courseCode: 'CS-301',
+    dueDate: new Date(Date.now() + 24 * 3600 * 1000).toISOString(),
+    priority: 'high',
+    status: 'in_progress',
+    weight: '15% of Final Grade',
+  },
+  {
+    id: 'assign-2',
+    title: 'Matrix Diagonalization & Singular Value Decomposition Problem Set 4',
+    courseCode: 'MATH-240',
+    dueDate: new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString(),
+    priority: 'medium',
+    status: 'pending',
+    weight: '10% of Final Grade',
+  },
+  {
+    id: 'assign-3',
+    title: 'Quantum Wave Packet Simulation & Harmonic Oscillator Analysis',
+    courseCode: 'PHYS-202',
+    dueDate: new Date(Date.now() + 5 * 24 * 3600 * 1000).toISOString(),
+    priority: 'high',
+    status: 'pending',
+    weight: '20% Lab Grade',
+  },
+  {
+    id: 'assign-4',
+    title: 'Attention Mechanism & Multi-Head Self-Attention Benchmark Study',
+    courseCode: 'AI-405',
+    dueDate: new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString(),
+    priority: 'medium',
+    status: 'completed',
+    weight: '25% Project Grade',
+  },
+];
+
+const educationStats: EducationStats = {
+  dailyStudyHoursGoal: 4.0,
+  dailyStudyHoursDone: 2.8,
+  streakDays: 7,
+};
+
 let settings: AppSettings = {
   name: 'JARVIS',
   personality: 'professional',
@@ -537,6 +670,189 @@ function recallRelevantMemories(query: string, maxResults = 4): string {
     return memoryStore.slice(-2).map((m) => `- ${m.text}`).join('\n');
   }
   return relevant.map((r) => `- ${r.item.text}`).join('\n');
+}
+
+// Education & Study Note Generator Engine
+async function generateEducationNotes(
+  topic: string,
+  subject = 'Computer Science & Technology',
+  format = 'Comprehensive Study Guide',
+  rawText = ''
+): Promise<NoteItem> {
+  let generatedContent = '';
+
+  if (ai && Date.now() > geminiCooldownUntil) {
+    const prompt = `You are J.A.R.V.I.S., Tony Stark's autonomous AI assistant and master academic tutor.
+Generate comprehensive, structured, high-yield academic study notes.
+Subject: ${subject}
+Topic: "${topic}"
+Target Format: ${format}
+${rawText ? `Source lecture transcript / raw text:\n"""\n${rawText}\n"""\n` : ''}
+
+Generate structured Markdown with:
+# ${topic} (${subject})
+## 🎯 Core Concepts & Executive Summary
+(Clear definitions, core mechanisms, why this matters)
+
+## 🔬 In-Depth Theoretical Breakdown
+(Formulas, code snippets if applicable, key principles, step-by-step mechanisms)
+
+## 💡 Practical Examples & Applications
+(Concrete step-by-step example problem solved or real-world use case)
+
+## ⚡ High-Yield Exam Review & Flashcards
+(3-4 Q&A flashcard questions for self-testing)
+
+## 📌 Key Takeaways
+(3 bullet points summary for quick retention)`;
+
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-3.1-flash-lite',
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        config: {
+          temperature: 0.5,
+        },
+      });
+      generatedContent = response.text || '';
+    } catch (e: any) {
+      const errMsg = e?.message || '';
+      if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED')) {
+        geminiCooldownUntil = Date.now() + 30000;
+      }
+    }
+  }
+
+  // Fallback high-yield template generator if Gemini is unavailable
+  if (!generatedContent) {
+    const safeTopic = topic.trim();
+    generatedContent = `# ${safeTopic} — ${subject}
+
+## 🎯 Core Concepts & Executive Summary
+- **Overview**: **${safeTopic}** represents a fundamental pillar in ${subject}. It provides the theoretical and practical framework required to understand system dynamics, algorithmic complexity, and real-world architectures.
+- **Key Definition**: The systematic methodology and principles governing ${safeTopic}, emphasizing efficiency, scalability, and deterministic precision.
+- **Relevance**: Essential for exams, technical interviews, and advanced coursework in ${subject}.
+
+## 🔬 In-Depth Theoretical Breakdown
+1. **Foundational Architecture**:
+   - Primary axioms and state invariants governing the system.
+   - Decomposition into modular components: input processing, algorithmic transformation, and verified output.
+2. **Key Formulas & Mechanics**:
+   - Time Complexity / Efficiency Bounds: Typical performance guarantees are $O(\\log n)$ to $O(n)$ depending on implementation constraints.
+   - Core Equation / Principle:
+\`\`\`
+State(t+1) = f(State(t), Input(t))  [Conservation of System Integrity]
+\`\`\`
+3. **Execution Steps**:
+   - Step 1: Initialize baseline parameters and verify pre-conditions.
+   - Step 2: Apply recursive or iterative transformation over the data structure.
+   - Step 3: Validate boundary conditions and terminate gracefully.
+
+## 💡 Practical Example
+\`\`\`typescript
+// High-Yield Demonstration for ${safeTopic}
+function solveCoreConcept(inputs: number[]): { result: number; status: string } {
+  console.log("Analyzing parameters for ${safeTopic}...");
+  const sum = inputs.reduce((acc, curr) => acc + curr, 0);
+  return {
+    result: sum * 2,
+    status: "Verified Nominal - Output Validated"
+  };
+}
+\`\`\`
+
+## ⚡ High-Yield Exam Review & Flashcards
+- **Q1**: What is the primary purpose and advantage of ${safeTopic}?
+  - **A1**: It allows deterministic optimization, reducing redundant overhead and ensuring consistent execution characteristics.
+- **Q2**: What are the most common pitfalls or edge cases to consider?
+  - **A2**: Neglecting boundary constraints, memory overhead in nested execution, and race conditions during concurrent execution.
+- **Q3**: How does this compare with legacy alternatives in ${subject}?
+  - **A3**: Modern approaches maximize throughput and modularity while preserving backward compatibility.
+
+## 📌 Key Takeaways
+- Master the fundamental definitions and state transitions first.
+- Always check edge cases and asymptotic bounds before finalizing proofs or code.
+- Review these notes 24 hours prior to exams for maximum retention.`;
+  }
+
+  const newNote: NoteItem = {
+    id: `note-${Date.now()}`,
+    title: `${topic} (${subject})`,
+    content: generatedContent,
+    createdAt: new Date().toISOString(),
+    tags: ['education', subject.toLowerCase().replace(/[^a-z0-9]+/g, '-'), 'ai-notes'],
+  };
+
+  noteStore.unshift(newNote);
+  return newNote;
+}
+
+// Education Briefing Compiler
+function compileEducationBriefing() {
+  const todayDay = new Date().toLocaleDateString('en-US', { weekday: 'short' });
+  const todayClasses = courseStore.filter(
+    (c) => c.schedule.includes(todayDay) || c.schedule.includes('Daily')
+  );
+  const pendingAssignments = assignmentStore.filter((a) => a.status !== 'completed');
+  const urgentAssignments = pendingAssignments.filter((a) => a.priority === 'high');
+
+  // Academic News / Research updates
+  const academicNews = [
+    {
+      title: 'MIT Open Learning Launches Quantum Algorithms Course Matrix for Fall 2026',
+      source: 'MIT News / Academic Registry',
+      category: 'Curriculum & Tech',
+      date: 'Today',
+      summary: 'New open interactive problem sets and automated grading simulators for advanced undergraduate and graduate computer science students.',
+    },
+    {
+      title: 'Global STEM Scholarship & Research Fellowships Application Window Now Open',
+      source: 'Academic Research Foundation',
+      category: 'Fellowships',
+      date: 'Today',
+      summary: 'Grants and research awards announced for AI systems, sustainable engineering, and computational astrophysics.',
+    },
+    {
+      title: 'IEEE Computing Society Issues Standardized Guidelines for Edge AI Education',
+      source: 'IEEE Spectrum Intelligence',
+      category: 'Engineering Standards',
+      date: 'Yesterday',
+      summary: 'Core syllabus recommendations integrating hardware-accelerated machine learning into standard engineering curricula.',
+    },
+    {
+      title: 'arXiv Releases Major Multi-Modal Reasoning Benchmarks for Student Learning',
+      source: 'arXiv Academic Preprint Server',
+      category: 'Research Breakthrough',
+      date: '2 Days Ago',
+      summary: 'Peer-reviewed studies showing significant retention increases when combining automated study notes with active recall flashcards.',
+    },
+  ];
+
+  const classSummary =
+    todayClasses.length > 0
+      ? `You have ${todayClasses.length} lecture${todayClasses.length > 1 ? 's' : ''} scheduled today: ${todayClasses.map((c) => `${c.code} (${c.name.slice(0, 22)}) at ${c.schedule.split(' ')[1] || 'scheduled time'}`).join(', ')}.`
+      : 'No lectures scheduled on your timetable for today.';
+
+  const assignmentSummary =
+    urgentAssignments.length > 0
+      ? `Attention: You have ${urgentAssignments.length} urgent assignment${urgentAssignments.length > 1 ? 's' : ''} requiring action, foremost: "${urgentAssignments[0].title}".`
+      : `You have ${pendingAssignments.length} total pending assignment${pendingAssignments.length !== 1 ? 's' : ''}, with no immediate high-priority emergencies.`;
+
+  const examSummary = courseStore.map((c) => `${c.code}: ${c.nextExam}`).slice(0, 2).join('. ');
+
+  const summaryVoiceText = `Good day, sir. All academic subsystems have been audited. ${classSummary} ${assignmentSummary} Exam radar: ${examSummary}. Your study streak is currently active at ${educationStats.streakDays} consecutive days with ${educationStats.dailyStudyHoursDone} of ${educationStats.dailyStudyHoursGoal} hours logged today. Education matrices are all nominal.`;
+
+  return {
+    timestamp: new Date().toISOString(),
+    greeting: 'Daily Academic Intelligence & Education Briefing',
+    todayClasses,
+    pendingAssignments,
+    urgentAssignments,
+    courses: courseStore,
+    stats: educationStats,
+    academicNews,
+    summaryVoiceText,
+  };
 }
 
 // Intent Router & Command Executor
@@ -732,6 +1048,11 @@ function routeDeterministicCommand(input: string): {
       tasks: 'tasks',
       system: 'system',
       diagnostics: 'system',
+      education: 'education',
+      academics: 'education',
+      study: 'education',
+      courses: 'education',
+      school: 'education',
     };
 
     if (links[target]) {
@@ -811,11 +1132,29 @@ function routeDeterministicCommand(input: string): {
     };
   }
 
+  // 12. Education & Academic Briefing Check ("check the daily updates whatever about my educations all of them")
+  if (
+    /\b(check (?:the |my )?(?:daily )?updates?.*educations?|daily (?:education )?updates?.*educations?|education updates?|academic updates?|education briefing|academic briefing|what are my classes today|check my assignments|check my study status|my educations?)\b/i.test(clean) ||
+    (/\b(daily updates?|check updates?)\b/i.test(clean) && /\b(education|educations|study|courses?|classes?|academics?|school|university)\b/i.test(clean))
+  ) {
+    const brief = compileEducationBriefing();
+    return {
+      isCommand: true,
+      command: 'education_briefing',
+      parameters: { briefing: brief },
+      result: brief.summaryVoiceText,
+    };
+  }
+
   return { isCommand: false };
 }
 
-// Build System Prompt
-function getSystemPrompt(personality: string, recalledMemories: string): string {
+// Build System Prompt with Multilingual & Code-Switching Intelligence
+function getSystemPrompt(
+  personality: string,
+  recalledMemories: string,
+  detectedLanguage?: DetectedLanguage
+): string {
   const styleNotes = {
     professional: 'calm, precise, respectful, and slightly formal',
     casual: 'friendly, relaxed, and conversational',
@@ -826,7 +1165,26 @@ function getSystemPrompt(personality: string, recalledMemories: string): string 
     `You are JARVIS, a highly intelligent futuristic personal AI assistant. ` +
     `Your tone is ${styleNotes}. Keep responses concise, direct, and clear — a sentence or two for simple queries, ` +
     `unless detailed technical explanations are explicitly requested. You operate with local privacy and precision. ` +
-    `Never break character. You are ready to assist with system operations, memory storage, productivity, and reasoning.`;
+    `Never break character. You are ready to assist with system operations, memory storage, productivity, reasoning, and multilingual directives.\n\n` +
+    `### MULTILINGUAL & CODE-SWITCHING DIRECTIVE:\n` +
+    `1. Understand whatever language or mix of languages the user uses.\n` +
+    `2. BY DEFAULT, YOU MUST REPLY IN THE EXACT SAME LANGUAGE OR LANGUAGE MIX AS THE LATEST USER MESSAGE.\n` +
+    `   - For mixed-language speech (e.g. Taglish, Spanglish, Hinglish, Singlish), produce a natural response in that same mix. Do NOT force a word-for-word translation or sound robotic.\n` +
+    `   - For pure languages (e.g. Spanish, Tagalog, French, German, Japanese, Hindi), reply naturally in that language.\n` +
+    `   - If the user switches languages, adapt your reply immediately to match the latest message.\n` +
+    `3. PRESERVE FORMALITY & TONE: Match the user's level of formality and conversational style (casual vs formal/honorifics like "po/opo").\n` +
+    `4. TRANSLATION PROTOCOL:\n` +
+    `   - Translate ONLY when the user explicitly asks for translation or clearly requests a target language.\n` +
+    `   - Output the direct, faithful translation in the target language requested.\n` +
+    `   - Preserve all original meaning, tone, proper names, numbers, codes, and formatting.\n` +
+    `   - Do NOT add unsolicited explanations, grammar lessons, or commentary unless asked.\n` +
+    `   - If the target language is unclear or missing, ask a short, polite clarification question.\n` +
+    `   - Do not claim a translation is certified or legally perfect.\n` +
+    `5. Avoid assuming a user's language or nationality based solely on names or locations; base it strictly on message text.`;
+
+  if (detectedLanguage) {
+    prompt += `\n\n[Active Linguistic Context]\nDetected user input language: ${detectedLanguage.name} (Code: ${detectedLanguage.code}, Formality: ${detectedLanguage.formality}, Mixed: ${detectedLanguage.isMixed}). Match this exact language and conversational style.`;
+  }
 
   if (recalledMemories.trim()) {
     prompt += `\n\n[Recalled Memory Context]\nThe following user facts are stored in your local memory:\n${recalledMemories.trim()}\nUse this context when answering if relevant.`;
@@ -972,6 +1330,150 @@ app.delete('/api/productivity/timers/:id', (req: Request, res: Response) => {
   res.json({ success: true });
 });
 
+// ==========================================
+// Education & Academic Hub Endpoints
+// ==========================================
+
+// 1. Overview
+app.get('/api/education/overview', (req: Request, res: Response) => {
+  const todayDay = new Date().toLocaleDateString('en-US', { weekday: 'short' });
+  const todayClasses = courseStore.filter((c) => c.schedule.includes(todayDay) || c.schedule.includes('Daily'));
+  const urgentAssignments = assignmentStore.filter(
+    (a) => a.status !== 'completed' && a.priority === 'high'
+  );
+  const educationNotes = noteStore.filter((n) => n.tags?.includes('education'));
+
+  res.json({
+    courses: courseStore,
+    assignments: assignmentStore,
+    stats: educationStats,
+    todayClasses,
+    urgentCount: urgentAssignments.length,
+    recentNotesCount: educationNotes.length,
+  });
+});
+
+// 2. Courses
+app.get('/api/education/courses', (req: Request, res: Response) => {
+  res.json(courseStore);
+});
+
+app.post('/api/education/courses', (req: Request, res: Response) => {
+  const { code, name, instructor, schedule, room, color } = req.body;
+  if (!name || !code) {
+    res.status(400).json({ error: 'Course code and name are required' });
+    return;
+  }
+  const course: CourseItem = {
+    id: `course-${Date.now()}`,
+    code: code.trim().toUpperCase(),
+    name: name.trim(),
+    instructor: instructor?.trim() || 'Faculty Member',
+    schedule: schedule?.trim() || 'Flexible Hours',
+    room: room?.trim() || 'Main Campus / Online',
+    attendance: 100,
+    progress: 0,
+    nextExam: 'Syllabus Initialized',
+    color: color || 'cyan',
+  };
+  courseStore.push(course);
+  res.json(course);
+});
+
+app.delete('/api/education/courses/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const index = courseStore.findIndex((c) => c.id === id);
+  if (index >= 0) {
+    courseStore.splice(index, 1);
+  }
+  res.json({ success: true });
+});
+
+// 3. Assignments
+app.get('/api/education/assignments', (req: Request, res: Response) => {
+  res.json(assignmentStore);
+});
+
+app.post('/api/education/assignments', (req: Request, res: Response) => {
+  const { title, courseCode, dueDate, priority, weight } = req.body;
+  if (!title) {
+    res.status(400).json({ error: 'Assignment title is required' });
+    return;
+  }
+  const assignment: AssignmentItem = {
+    id: `assign-${Date.now()}`,
+    title: title.trim(),
+    courseCode: (courseCode || 'GENERAL').trim().toUpperCase(),
+    dueDate: dueDate || new Date(Date.now() + 3 * 24 * 3600 * 1000).toISOString(),
+    priority: priority || 'medium',
+    status: 'pending',
+    weight: weight || 'Coursework',
+  };
+  assignmentStore.unshift(assignment);
+  res.json(assignment);
+});
+
+app.patch('/api/education/assignments/:id/toggle', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const assignment = assignmentStore.find((a) => a.id === id);
+  if (!assignment) {
+    res.status(404).json({ error: 'Assignment not found' });
+    return;
+  }
+  if (assignment.status === 'completed') {
+    assignment.status = 'pending';
+  } else if (assignment.status === 'pending') {
+    assignment.status = 'in_progress';
+  } else {
+    assignment.status = 'completed';
+  }
+  res.json(assignment);
+});
+
+app.delete('/api/education/assignments/:id', (req: Request, res: Response) => {
+  const { id } = req.params;
+  const index = assignmentStore.findIndex((a) => a.id === id);
+  if (index >= 0) {
+    assignmentStore.splice(index, 1);
+  }
+  res.json({ success: true });
+});
+
+// 4. Daily Education Updates & All Academic Tracks Check
+app.get('/api/education/daily-updates', (req: Request, res: Response) => {
+  const briefing = compileEducationBriefing();
+  res.json(briefing);
+});
+
+// 5. AI Study Note Generator ("Making Notes For Me")
+app.post('/api/education/generate-notes', async (req: Request, res: Response) => {
+  const { topic, subject, format, rawText } = req.body;
+  if (!topic && !rawText) {
+    res.status(400).json({ error: 'Topic or raw study text is required to generate notes' });
+    return;
+  }
+
+  try {
+    const note = await generateEducationNotes(
+      topic || 'Synthesized Lecture Topic',
+      subject || 'Computer Science & Technology',
+      format || 'Comprehensive Study Guide',
+      rawText || ''
+    );
+    res.json(note);
+  } catch (err: any) {
+    res.status(500).json({ error: err?.message || 'Failed to generate study notes' });
+  }
+});
+
+// 6. Update Study Goal / Hours
+app.post('/api/education/study-session', (req: Request, res: Response) => {
+  const { minutes } = req.body;
+  const hours = (Number(minutes) || 25) / 60;
+  educationStats.dailyStudyHoursDone = Math.round((educationStats.dailyStudyHoursDone + hours) * 10) / 10;
+  res.json(educationStats);
+});
+
 // Memory Bank
 app.get('/api/memory', (req: Request, res: Response) => {
   const { query } = req.query;
@@ -1098,6 +1600,103 @@ app.post('/api/jarvis/chat', async (req: Request, res: Response) => {
     return;
   }
 
+  // 0. Language, Code-Switching & Translation Protocol Engine
+  const detectedLang = detectLanguageAndStyle(message);
+  const translationReq = parseTranslationRequest(message);
+
+  // Check explicit translation requests first
+  if (translationReq.isTranslation) {
+    if (translationReq.needsClarification) {
+      res.json({
+        intentType: 'translation',
+        command: 'translate_text',
+        parameters: { needsClarification: true, sourceText: translationReq.sourceText },
+        response: translationReq.clarificationPrompt,
+        language: detectedLang.code,
+        languageName: detectedLang.name,
+        isMixed: detectedLang.isMixed,
+        source: 'jarvis_multilingual_engine',
+      });
+      return;
+    }
+
+    const targetLang = translationReq.targetLanguage!;
+    const textToTranslate = translationReq.sourceText || message;
+
+    if (ai && Date.now() > geminiCooldownUntil) {
+      const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
+      for (const modelName of candidateModels) {
+        try {
+          const transPrompt =
+            `You are a professional linguistic translation engine. Translate the following text faithfully into ${targetLang}.\n` +
+            `CRITICAL RULES:\n` +
+            `- Output ONLY the direct translated text in ${targetLang}.\n` +
+            `- Do NOT include introductory phrases, quotation marks around output, grammar notes, or explanations.\n` +
+            `- Preserve all proper names, technical acronyms, codes, numbers, and formatting.\n` +
+            `- Match the original level of formality and tone.\n\n` +
+            `Text to translate:\n${textToTranslate}`;
+
+          const transResponse = await ai.models.generateContent({
+            model: modelName,
+            contents: [{ role: 'user', parts: [{ text: transPrompt }] }],
+            config: {
+              temperature: 0.2,
+            },
+          });
+
+          const translatedOutput =
+            transResponse.text?.trim() || executeLocalTranslation(textToTranslate, targetLang);
+
+          res.json({
+            intentType: 'translation',
+            command: 'translate_text',
+            parameters: {
+              sourceText: textToTranslate,
+              targetLanguage: targetLang,
+              targetLanguageCode: translationReq.targetLanguageCode,
+            },
+            response: translatedOutput,
+            language: translationReq.targetLanguageCode,
+            languageName: targetLang,
+            isMixed: false,
+            source: 'gemini_multilingual_translator',
+          });
+          return;
+        } catch (err: any) {
+          const errMsg = (err?.message || String(err)).toLowerCase();
+          if (
+            errMsg.includes('429') ||
+            errMsg.includes('resource_exhausted') ||
+            errMsg.includes('quota') ||
+            errMsg.includes('limit') ||
+            errMsg.includes('rate')
+          ) {
+            continue;
+          }
+          break;
+        }
+      }
+    }
+
+    // Local fallback translation
+    const localTranslation = executeLocalTranslation(textToTranslate, targetLang);
+    res.json({
+      intentType: 'translation',
+      command: 'translate_text',
+      parameters: {
+        sourceText: textToTranslate,
+        targetLanguage: targetLang,
+        targetLanguageCode: translationReq.targetLanguageCode,
+      },
+      response: localTranslation,
+      language: translationReq.targetLanguageCode,
+      languageName: targetLang,
+      isMixed: false,
+      source: 'local_multilingual_translator',
+    });
+    return;
+  }
+
   // 1. Check deterministic commands first
   const deterministic = routeDeterministicCommand(message);
   if (deterministic.isCommand) {
@@ -1127,16 +1726,95 @@ app.post('/api/jarvis/chat', async (req: Request, res: Response) => {
       return;
     }
 
+    if (deterministic.command === 'education_briefing') {
+      res.json({
+        intentType: 'education_briefing',
+        command: 'open_education',
+        parameters: deterministic.parameters || {},
+        response: deterministic.result,
+        source: 'jarvis_education_matrix',
+      });
+      return;
+    }
+
     if (deterministic.result) {
+      const localizedResult = adaptCommandResultLanguage(deterministic.result, detectedLang);
       res.json({
         intentType: 'command',
         command: deterministic.command,
         parameters: deterministic.parameters || {},
-        response: deterministic.result,
+        response: localizedResult,
+        language: detectedLang.code,
+        languageName: detectedLang.name,
+        isMixed: detectedLang.isMixed,
         source: 'deterministic_executor',
       });
       return;
     }
+  }
+
+  // 1b. Combo Command: "making notes for me and check the daily updates whatever about my educations all of them"
+  const cleanMsg = message.trim();
+  if (
+    (/\b(making notes|make notes|take notes|study notes)\b/i.test(cleanMsg) &&
+      /\b(education|educations|daily updates|academic|syllabus|classes)\b/i.test(cleanMsg)) ||
+    /\b(making notes for me and check the daily updates)\b/i.test(cleanMsg)
+  ) {
+    const brief = compileEducationBriefing();
+    const starterNote = await generateEducationNotes(
+      'Autonomous Academic Intelligence & Learning Protocols',
+      'Computer Science & Higher Education',
+      'Comprehensive Study Guide'
+    );
+    res.json({
+      intentType: 'education_briefing_and_notes',
+      command: 'open_education',
+      parameters: { briefing: brief, noteId: starterNote.id, tab: 'briefing' },
+      response: `All Education Protocols engaged, sir: The AI Note-Maker ("Make Notes For Me") and Real-Time Daily Education Briefing are both fully operational in your Stark HUD.\n\n${brief.summaryVoiceText}\n\nI have also synthesized your initial study guide: "${starterNote.title}", now logged in your Education Repository.`,
+      briefing: brief,
+      note: starterNote,
+      source: 'jarvis_academic_intelligence',
+    });
+    return;
+  }
+
+  // 1c. Standalone Note-Maker trigger ("make notes for me", "make notes", "open study notes")
+  if (/^(?:(?:can you |please )?(?:make|take|create|generate|write) (?:me )?(?:a )?(?:study )?notes?(?: for me)?|open (?:study )?notes?|note maker)$/i.test(cleanMsg)) {
+    res.json({
+      intentType: 'education_note',
+      command: 'open_education',
+      parameters: { tab: 'notes' },
+      response: `AI Note-Maker protocol engaged, sir. Launching the study synthesis interface. What topic, lecture transcript, or subject would you like me to make notes on?`,
+      source: 'jarvis_academic_engine',
+    });
+    return;
+  }
+
+  // 1d. AI Education Note-Maker with topic ("make notes for me about Quantum Mechanics")
+  const noteMakingMatch = cleanMsg.match(
+    /^(?:(?:can you |please )?(?:make|take|create|generate|write) (?:me )?(?:a )?(?:study )?notes? (?:for me )?(?:about|on|regarding|of)?|study notes? on)\s+(.*)/i
+  );
+  if (noteMakingMatch && noteMakingMatch[1]?.trim()) {
+    const rawTopic = noteMakingMatch[1].trim();
+    let subject = 'Computer Science & Technology';
+    if (/\b(math|calculus|algebra|linear algebra|geometry|statistics|probability)\b/i.test(rawTopic)) subject = 'Mathematics';
+    else if (/\b(physics|quantum|mechanics|thermo|optics|relativity)\b/i.test(rawTopic)) subject = 'Physics';
+    else if (/\b(chem|chemistry|organic|molecule|reaction)\b/i.test(rawTopic)) subject = 'Chemistry';
+    else if (/\b(bio|biology|genetics|cell|anatomy|neuro)\b/i.test(rawTopic)) subject = 'Biology';
+    else if (/\b(history|war|revolution|ancient|civilization|renaissance)\b/i.test(rawTopic)) subject = 'History';
+    else if (/\b(econ|economics|finance|macro|micro|market)\b/i.test(rawTopic)) subject = 'Economics';
+    else if (/\b(literature|writing|poetry|grammar|essay)\b/i.test(rawTopic)) subject = 'Literature & Writing';
+
+    const note = await generateEducationNotes(rawTopic, subject, 'Comprehensive Study Guide');
+    res.json({
+      intentType: 'education_note',
+      command: 'open_education',
+      parameters: { noteId: note.id, topic: rawTopic, subject, tab: 'notes' },
+      response: `Study Notes Generated: "${note.title}" has been structured and archived into your Education Repository. Core definitions, formulas/code, and self-test flashcards have been compiled for your review.`,
+      note,
+      source: 'jarvis_academic_engine',
+    });
+    return;
   }
 
   // 2. Memory context retrieval
@@ -1163,7 +1841,7 @@ app.post('/api/jarvis/chat', async (req: Request, res: Response) => {
   // 4. AI Reasoning via Gemini SDK with Multi-Model Failover & Google Search Data Grounding
   if (ai && Date.now() > geminiCooldownUntil) {
     const candidateModels = ['gemini-3.1-flash-lite', 'gemini-flash-latest', 'gemini-3.8-flash'];
-    const systemInstruction = getSystemPrompt(settings.personality, recalledMemories);
+    const systemInstruction = getSystemPrompt(settings.personality, recalledMemories, detectedLang);
 
     // Build conversation contents
     const conversationContents = [];
@@ -1211,13 +1889,22 @@ app.post('/api/jarvis/chat', async (req: Request, res: Response) => {
           recalledMemories: recalledMemories || null,
           groundingSources: searchSources.length > 0 ? searchSources : null,
           webSearchQueries: webSearchQueries || null,
+          language: detectedLang.code,
+          languageName: detectedLang.name,
+          isMixed: detectedLang.isMixed,
           source: searchSources.length > 0 ? 'gemini_search_grounded' : 'gemini_brain',
         });
         return;
       } catch (err: any) {
         // If quota exceeded on this model, continue to next candidate
-        const errMsg = err?.message || '';
-        if (errMsg.includes('429') || errMsg.includes('RESOURCE_EXHAUSTED') || errMsg.includes('quota')) {
+        const errMsg = (err?.message || String(err)).toLowerCase();
+        if (
+          errMsg.includes('429') ||
+          errMsg.includes('resource_exhausted') ||
+          errMsg.includes('quota') ||
+          errMsg.includes('limit') ||
+          errMsg.includes('rate')
+        ) {
           continue;
         }
         break;
@@ -1238,6 +1925,30 @@ app.post('/api/jarvis/chat', async (req: Request, res: Response) => {
   };
 
   let fallbackReply = answers[lowerMsg];
+
+  // Multilingual & code-switched procedural fallback replies
+  if (detectedLang.name.includes('Taglish') || detectedLang.code === 'fil-PH') {
+    if (/\b(hello|hi|kamusta|kumusta)\b/i.test(lowerMsg)) {
+      fallbackReply = 'Kumusta po, sir! Lahat ng JARVIS systems natin ay fully online at operating at 100% efficiency. Paano po ako makakatulong sa inyo today?';
+    } else if (/\b(status|katayuan)\b/i.test(lowerMsg)) {
+      fallbackReply = 'All protocols nominal po, sir. Ayos ang memory vault at active ang hardware telemetry natin.';
+    } else if (/\b(salamat|thank)\b/i.test(lowerMsg)) {
+      fallbackReply = 'Walang anuman po, sir! Always happy to assist. Let me know po kung may kailangan pa kayo.';
+    } else if (/\b(who are you|sino ka)\b/i.test(lowerMsg)) {
+      fallbackReply = 'Ako po si J.A.R.V.I.S., your Just A Rather Very Intelligent System. Ready po ako mag-manage ng tasks, mag-translate, at mag-assist sa inyong daily work.';
+    }
+  } else if (detectedLang.name.includes('Spanglish') || detectedLang.code === 'es-ES') {
+    if (/\b(hola|buenos dias|buenas)\b/i.test(lowerMsg)) {
+      fallbackReply = 'Saludos, señor. Todos los sistemas JARVIS están en línea y funcionando con máxima eficiencia. ¿En qué puedo asistirle hoy?';
+    } else if (/\b(status|estado)\b/i.test(lowerMsg)) {
+      fallbackReply = 'Todos los protocolos nominales, señor. Vectores de memoria estables y diagnósticos de hardware al 100%.';
+    } else if (/\b(gracias|thank)\b/i.test(lowerMsg)) {
+      fallbackReply = 'Siempre un placer, señor. Avíseme si requiere asistencia con cualquier otra directiva.';
+    } else if (/\b(who are you|quien eres)\b/i.test(lowerMsg)) {
+      fallbackReply = 'Soy J.A.R.V.I.S., su asistente de inteligencia artificial. Administro telemetría, tareas, traducciones y operaciones locales.';
+    }
+  }
+
   if (!fallbackReply) {
     // Check for conversational image synthesis request
     if (/\b(create|generate|make|draw|render|picture|image|photo)\b/i.test(lowerMsg)) {
@@ -1260,6 +1971,9 @@ app.post('/api/jarvis/chat', async (req: Request, res: Response) => {
         response: `Holographic Visual Synthesis Complete: Rendered image frame for "${imgPrompt}".`,
         imageUrl: imgResult.imageUrl,
         imagePrompt: imgPrompt,
+        language: detectedLang.code,
+        languageName: detectedLang.name,
+        isMixed: detectedLang.isMixed,
         source: 'jarvis_visual_synthesis',
       });
       return;
@@ -1276,6 +1990,9 @@ app.post('/api/jarvis/chat', async (req: Request, res: Response) => {
         recalledMemories: recalledMemories || null,
         groundingSources: searchResult.sources,
         webSearchQueries: searchResult.searchQueries,
+        language: detectedLang.code,
+        languageName: detectedLang.name,
+        isMixed: detectedLang.isMixed,
         source: 'live_data_grounded',
       });
       return;
@@ -1285,6 +2002,10 @@ app.post('/api/jarvis/chat', async (req: Request, res: Response) => {
       fallbackReply = 'Always a pleasure, sir. Let me know if you need anything else.';
     } else if (lowerMsg.includes('how are you')) {
       fallbackReply = 'Operating at 100% computational efficiency, sir. Ready for your next command.';
+    } else if (detectedLang.name.includes('Taglish') || detectedLang.code === 'fil-PH') {
+      fallbackReply = `Naiintindihan ko po, sir. Na-process ko ang "${message}". Pwede po kayong mag-utos ng task directives, magpa-translate, o mag-search ng research data.`;
+    } else if (detectedLang.name.includes('Spanglish') || detectedLang.code === 'es-ES') {
+      fallbackReply = `Entendido, señor. He procesado "${message}". Puede solicitar traducciones, gestionar directivas de tareas o consultar datos de investigación.`;
     } else {
       fallbackReply = `Understood, sir. I have processed "${message}". You can ask me difficult research questions to search the datas, request holographic images to be created, or manage tasks, notes, and local memory vectors.`;
     }
@@ -1296,6 +2017,9 @@ app.post('/api/jarvis/chat', async (req: Request, res: Response) => {
     parameters: {},
     response: fallbackReply,
     recalledMemories: recalledMemories || null,
+    language: detectedLang.code,
+    languageName: detectedLang.name,
+    isMixed: detectedLang.isMixed,
     source: 'local_brain',
   });
 });
@@ -1311,6 +2035,10 @@ async function startServer() {
     app.use(vite.middlewares);
     app.use('*', async (req: Request, res: Response, next) => {
       const url = req.originalUrl;
+      if (url.startsWith('/api/')) {
+        res.status(404).json({ error: `API route not found: ${url}` });
+        return;
+      }
       try {
         let template = fs.readFileSync(path.resolve(__dirname, 'index.html'), 'utf-8');
         template = await vite.transformIndexHtml(url, template);
@@ -1323,6 +2051,11 @@ async function startServer() {
   } else {
     app.use(express.static(path.join(__dirname, 'dist')));
     app.get('*', (req: Request, res: Response) => {
+      const url = req.originalUrl;
+      if (url.startsWith('/api/')) {
+        res.status(404).json({ error: `API route not found: ${url}` });
+        return;
+      }
       res.sendFile(path.join(__dirname, 'dist', 'index.html'));
     });
   }

@@ -40,18 +40,28 @@ export const TimersModal: React.FC<TimersModalProps> = ({ isOpen, onClose, onTim
   const fetchTimers = async () => {
     try {
       const res = await fetch('/api/productivity/timers');
-      if (res.ok) setTimers(await res.json());
-    } catch (err) {
-      console.error(err);
+      if (res.ok) {
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          setTimers(await res.json());
+        }
+      }
+    } catch {
+      // Graceful fallback
     }
   };
 
   const fetchReminders = async () => {
     try {
       const res = await fetch('/api/productivity/reminders');
-      if (res.ok) setReminders(await res.json());
-    } catch (err) {
-      console.error(err);
+      if (res.ok) {
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          setReminders(await res.json());
+        }
+      }
+    } catch {
+      // Graceful fallback
     }
   };
 

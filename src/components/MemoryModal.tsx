@@ -26,11 +26,16 @@ export const MemoryModal: React.FC<MemoryModalProps> = ({ isOpen, onClose, onMem
       const url = query ? `/api/memory?query=${encodeURIComponent(query)}` : '/api/memory';
       const res = await fetch(url);
       if (res.ok) {
-        const data = await res.json();
-        setMemories(data.memories || []);
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (data && Array.isArray(data.memories)) {
+            setMemories(data.memories);
+          }
+        }
       }
-    } catch (err) {
-      console.error(err);
+    } catch {
+      // Graceful fallback
     } finally {
       setLoading(false);
     }

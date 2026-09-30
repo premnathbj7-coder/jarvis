@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { FileText, Plus, Trash2, X, Tag } from 'lucide-react';
+import { FileText, Plus, Trash2, X, Tag, Sparkles, RefreshCw } from 'lucide-react';
 
 interface Note {
   id: string;
@@ -22,20 +22,58 @@ export const NotesModal: React.FC<NotesModalProps> = ({ isOpen, onClose }) => {
   const [selectedNote, setSelectedNote] = useState<Note | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // AI Note Generator State
+  const [aiPrompt, setAiPrompt] = useState('');
+  const [isGeneratingAi, setIsGeneratingAi] = useState(false);
+
   const fetchNotes = async () => {
     try {
       const res = await fetch('/api/productivity/notes');
       if (res.ok) {
-        const data = await res.json();
-        setNotes(data);
-        if (data.length > 0 && !selectedNote) {
-          setSelectedNote(data[0]);
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setNotes(data);
+            if (data.length > 0 && !selectedNote) {
+              setSelectedNote(data[0]);
+            }
+          }
         }
       }
-    } catch (err) {
-      console.error('Failed to load notes:', err);
+    } catch {
+      // Graceful fallback during server warmup
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleGenerateAiNote = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!aiPrompt.trim()) return;
+
+    setIsGeneratingAi(true);
+    try {
+      const res = await fetch('/api/education/generate-notes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          topic: aiPrompt.trim(),
+          subject: 'Academic & Technical Notes',
+          format: 'Comprehensive Study Guide',
+        }),
+      });
+
+      if (res.ok) {
+        const newNote = await res.json();
+        setAiPrompt('');
+        await fetchNotes();
+        setSelectedNote(newNote);
+      }
+    } catch (err) {
+      console.error('Failed to generate AI note:', err);
+    } finally {
+      setIsGeneratingAi(false);
     }
   };
 
@@ -111,6 +149,35 @@ export const NotesModal: React.FC<NotesModalProps> = ({ isOpen, onClose }) => {
             <X className="w-5 h-5" />
           </button>
         </div>
+
+        {/* Quick AI Note-Maker Bar */}
+        <form onSubmit={handleGenerateAiNote} className="mt-3 p-2.5 rounded-xl bg-purple-950/20 border border-purple-500/30 flex items-center gap-2">
+          <Sparkles className="w-4 h-4 text-purple-400 shrink-0 animate-pulse ml-1" />
+          <input
+            type="text"
+            value={aiPrompt}
+            onChange={(e) => setAiPrompt(e.target.value)}
+            placeholder="Ask J.A.R.V.I.S. to make notes for you (e.g. 'Binary Search Trees', 'Quantum Mechanics', 'Thermodynamics')..."
+            className="flex-1 bg-transparent text-xs text-purple-100 placeholder:text-slate-500 focus:outline-none font-sans"
+          />
+          <button
+            type="submit"
+            disabled={isGeneratingAi || !aiPrompt.trim()}
+            className="px-3 py-1.5 rounded-lg bg-purple-600/30 hover:bg-purple-600/50 border border-purple-500/40 text-purple-200 text-xs font-hud tracking-wider flex items-center gap-1.5 transition-all disabled:opacity-40"
+          >
+            {isGeneratingAi ? (
+              <>
+                <RefreshCw className="w-3 h-3 animate-spin text-purple-300" />
+                <span>GENERATING...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3 h-3 text-purple-300" />
+                <span>MAKE AI NOTE</span>
+              </>
+            )}
+          </button>
+        </form>
 
         {/* Content split pane */}
         <div className="mt-4 flex-1 grid grid-cols-1 md:grid-cols-12 gap-4 overflow-hidden">

@@ -1,11 +1,9 @@
 @import "tailwindcss";
 
 :root {
-  --color-primary: #ef4444;
-  --color-primary-glow: rgba(239, 68, 68, 0.45);
-  --color-secondary: #eab308;
-  --color-secondary-glow: rgba(234, 179, 8, 0.45);
-  --color-hud-bg: rgba(24, 4, 9, 0.88);
+  --color-primary: #00d4ff;
+  --color-primary-glow: rgba(0, 212, 255, 0.4);
+  --color-hud-bg: rgba(10, 16, 26, 0.85);
 }
 
 body {
@@ -27,14 +25,14 @@ body {
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(20, 5, 8, 0.85);
+  background: rgba(8, 14, 23, 0.7);
 }
 ::-webkit-scrollbar-thumb {
-  background: rgba(239, 68, 68, 0.4);
+  background: rgba(0, 212, 255, 0.3);
   border-radius: 3px;
 }
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(250, 204, 21, 0.7);
+  background: rgba(0, 212, 255, 0.6);
 }
 
 @keyframes scanline {
@@ -50,7 +48,70 @@ body {
   content: " ";
   position: absolute;
   top: 0; left: 0; right: 0; height: 3px;
-  background: linear-gradient(to bottom, transparent, rgba(250, 204, 21, 0.22), transparent);
+  background: linear-gradient(to bottom, transparent, rgba(0, 212, 255, 0.15), transparent);
   animation: scanline 8s linear infinite;
   pointer-events: none;
+}
+
+/* Ambient Shell Breathing Animations (Synchronized with OrbVisualizer) */
+@keyframes ambientShellVignette {
+  0%, 100% {
+    opacity: 0.25;
+    box-shadow: inset 0 0 60px var(--orb-glow-color, rgba(0, 212, 255, 0.2)),
+                inset 0 0 120px rgba(0, 8, 16, 0.7);
+    filter: brightness(0.96);
+  }
+  50% {
+    opacity: 0.85;
+    box-shadow: inset 0 0 130px var(--orb-glow-color, rgba(0, 212, 255, 0.45)),
+                inset 0 0 180px rgba(0, 8, 16, 0.4);
+    filter: brightness(1.06);
+  }
+}
+
+@keyframes ambientCoreBackdrop {
+  0%, 100% {
+    opacity: 0.08;
+    transform: translate(-50%, -50%) scale(0.92);
+  }
+  50% {
+    opacity: 0.28;
+    transform: translate(-50%, -50%) scale(1.15);
+  }
+}
+
+@keyframes ambientGridBreathing {
+  0%, 100% {
+    opacity: 0.10;
+  }
+  50% {
+    opacity: 0.28;
+  }
+}
+
+@keyframes ambientRimGlow {
+  0%, 100% {
+    opacity: 0.35;
+    border-color: rgba(0, 212, 255, 0.2);
+  }
+  50% {
+    opacity: 0.95;
+    border-color: var(--orb-border-color, rgba(0, 212, 255, 0.65));
+  }
+}
+
+.ambient-breathing-vignette {
+  animation: ambientShellVignette var(--orb-breath-duration, 5.24s) ease-in-out infinite;
+}
+
+.ambient-breathing-core {
+  animation: ambientCoreBackdrop var(--orb-breath-duration, 5.24s) ease-in-out infinite;
+}
+
+.ambient-breathing-grid {
+  animation: ambientGridBreathing var(--orb-breath-duration, 5.24s) ease-in-out infinite;
+}
+
+.ambient-breathing-rim {
+  animation: ambientRimGlow var(--orb-breath-duration, 5.24s) ease-in-out infinite;
 }

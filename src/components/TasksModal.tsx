@@ -23,11 +23,16 @@ export const TasksModal: React.FC<TasksModalProps> = ({ isOpen, onClose, onTaskC
     try {
       const res = await fetch('/api/productivity/tasks');
       if (res.ok) {
-        const data = await res.json();
-        setTasks(data);
+        const contentType = res.headers.get('content-type');
+        if (contentType && contentType.includes('application/json')) {
+          const data = await res.json();
+          if (Array.isArray(data)) {
+            setTasks(data);
+          }
+        }
       }
-    } catch (err) {
-      console.error('Failed to load tasks:', err);
+    } catch {
+      // Graceful fallback during server warmup
     } finally {
       setLoading(false);
     }

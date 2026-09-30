@@ -10,6 +10,7 @@ import {
   CheckCircle,
   Clock,
   Layers,
+  GraduationCap,
 } from 'lucide-react';
 
 interface WorkflowsModalProps {
@@ -18,6 +19,7 @@ interface WorkflowsModalProps {
   onTriggerFocusMode: () => void;
   onTriggerBriefing: () => void;
   onTriggerDiagnostics: () => void;
+  onTriggerEducation?: () => void;
 }
 
 export const WorkflowsModal: React.FC<WorkflowsModalProps> = ({
@@ -26,6 +28,7 @@ export const WorkflowsModal: React.FC<WorkflowsModalProps> = ({
   onTriggerFocusMode,
   onTriggerBriefing,
   onTriggerDiagnostics,
+  onTriggerEducation,
 }) => {
   const [activeWorkflow, setActiveWorkflow] = useState<string | null>(null);
 
@@ -39,6 +42,22 @@ export const WorkflowsModal: React.FC<WorkflowsModalProps> = ({
       handler: () => {
         setActiveWorkflow('focus');
         onTriggerFocusMode();
+        setTimeout(() => setActiveWorkflow(null), 2500);
+      },
+    },
+    {
+      id: 'education',
+      title: 'Daily Education Briefing & Academic Intelligence',
+      desc: 'Audits all enrolled courses, lectures scheduled today, pending assignment deadlines, exams radar, study streak, and latest STEM news.',
+      icon: <GraduationCap className="w-5 h-5 text-cyan-400" />,
+      actionLabel: 'CHECK EDUCATION UPDATES',
+      handler: () => {
+        setActiveWorkflow('education');
+        if (onTriggerEducation) {
+          onTriggerEducation();
+        } else {
+          onTriggerBriefing();
+        }
         setTimeout(() => setActiveWorkflow(null), 2500);
       },
     },
