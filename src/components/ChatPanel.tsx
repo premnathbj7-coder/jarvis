@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import {
   Send,
   Mic,
@@ -129,7 +129,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
   const toggleMic = () => {
     if (!recognitionRef.current) {
-      alert('Speech Recognition is not supported by your current browser.');
+      console.warn('Speech Recognition is not supported by your current browser.');
       return;
     }
 
@@ -179,6 +179,15 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
           v.lang.startsWith('en')
       );
     }
+    if (!matchingVoice && baseCode === 'ta') {
+      matchingVoice = voices.find(
+        (v) =>
+          v.lang.toLowerCase().startsWith('ta') ||
+          v.name.toLowerCase().includes('tamil') ||
+          v.lang.toLowerCase().startsWith('en-in') ||
+          v.lang.toLowerCase().replace('_', '-').startsWith('en-in')
+      );
+    }
     if (!matchingVoice) {
       matchingVoice = voices.find(
         (v) =>
@@ -217,12 +226,13 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
   };
 
   const sampleCommands = [
+    'Vanakkam JARVIS, system status epdi irukku?',
+    'Translate "Good morning my friend" to Tanglish',
     'Kumusta JARVIS, can you check the system status today?',
     'Translate "All systems nominal" to Spanish',
     'Pakisalin sa Tagalog: "Welcome to Stark Industries"',
     'Hola JARVIS, ¿cuál es el estado de los sistemas?',
     'Create an image of an Arc Reactor in cyan',
-    'Search the datas: what are the latest quantum computing breakthroughs?',
     'Set a timer for 3 minutes',
   ];
 

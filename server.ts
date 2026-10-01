@@ -865,7 +865,7 @@ function routeDeterministicCommand(input: string): {
   const clean = input.trim().toLowerCase();
 
   // 1. Time & Date
-  if (/\b(what('s| is)? the time|current time|what time is it)\b/i.test(clean)) {
+  if (/\b(what('s| is)? the time|current time|what time is it|time enna|ippo time|enna time)\b/i.test(clean)) {
     const now = new Date();
     const timeStr = now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     return {
@@ -875,7 +875,7 @@ function routeDeterministicCommand(input: string): {
     };
   }
 
-  if (/\b(what('s| is)? (today('s)? date|the date)|what day is it)\b/i.test(clean)) {
+  if (/\b(what('s| is)? (today('s)? date|the date)|what day is it|innaiku date|enna date|innaiki enna date)\b/i.test(clean)) {
     const now = new Date();
     const dateStr = now.toLocaleDateString([], { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' });
     return {
@@ -886,7 +886,7 @@ function routeDeterministicCommand(input: string): {
   }
 
   // 2. System status
-  if (/\b(system (info|status|diagnostics)|check cpu|check memory|hardware specs)\b/i.test(clean)) {
+  if (/\b(system (info|status|diagnostics)|check cpu|check memory|hardware specs|system status epdi|status epdi irukku)\b/i.test(clean)) {
     const stats = getSystemStats();
     return {
       isCommand: true,
@@ -978,7 +978,7 @@ function routeDeterministicCommand(input: string): {
   }
 
   // 7. Tasks
-  const taskMatch = clean.match(/^(?:add (?:a )?task|add to my tasks|add to-do|create task)\s+(.*)/i);
+  const taskMatch = clean.match(/^(?:add (?:a )?task|add to my tasks|add to-do|create task|task add pannu|task add pannunga)\s+(.*)/i);
   if (taskMatch) {
     const text = taskMatch[1].trim();
     const newTask: TaskItem = {
@@ -997,7 +997,7 @@ function routeDeterministicCommand(input: string): {
   }
 
   // 8. Notes
-  const noteMatch = clean.match(/^(?:create (?:a )?note (?:called|titled)?|take a note:?)\s*(.*)/i);
+  const noteMatch = clean.match(/^(?:create (?:a )?note (?:called|titled)?|take a note:?|note create pannu|note save pannu)\s*(.*)/i);
   if (noteMatch) {
     const noteText = noteMatch[1].trim();
     const parts = noteText.split(/[:\-\—]\s*/);
@@ -1169,10 +1169,10 @@ function getSystemPrompt(
     `### MULTILINGUAL & CODE-SWITCHING DIRECTIVE:\n` +
     `1. Understand whatever language or mix of languages the user uses.\n` +
     `2. BY DEFAULT, YOU MUST REPLY IN THE EXACT SAME LANGUAGE OR LANGUAGE MIX AS THE LATEST USER MESSAGE.\n` +
-    `   - For mixed-language speech (e.g. Taglish, Spanglish, Hinglish, Singlish), produce a natural response in that same mix. Do NOT force a word-for-word translation or sound robotic.\n` +
-    `   - For pure languages (e.g. Spanish, Tagalog, French, German, Japanese, Hindi), reply naturally in that language.\n` +
+    `   - For mixed-language speech (e.g. Tanglish [Tamil + English], Taglish, Spanglish, Hinglish), produce a natural, fluent response in that same mix. When the user speaks in Tanglish (e.g. "Vanakkam JARVIS epdi irukinga", "Enna panreenga", "System status epdi irukku"), reply naturally in smooth Tanglish combining Tamil and English naturally without sounding robotic.\n` +
+    `   - For pure languages (e.g. Tamil, Spanish, Tagalog, French, German, Japanese, Hindi), reply naturally in that language.\n` +
     `   - If the user switches languages, adapt your reply immediately to match the latest message.\n` +
-    `3. PRESERVE FORMALITY & TONE: Match the user's level of formality and conversational style (casual vs formal/honorifics like "po/opo").\n` +
+    `3. PRESERVE FORMALITY & TONE: Match the user's level of formality and conversational style (casual vs formal/honorifics like "po/opo" in Tagalog or "nga/ungalukku" in Tamil).\n` +
     `4. TRANSLATION PROTOCOL:\n` +
     `   - Translate ONLY when the user explicitly asks for translation or clearly requests a target language.\n` +
     `   - Output the direct, faithful translation in the target language requested.\n` +
@@ -1508,6 +1508,50 @@ app.delete('/api/memory/:id', (req: Request, res: Response) => {
     memoryStore.splice(index, 1);
   }
   res.json({ success: true });
+});
+
+// Unified Global Search across Notes, Memories, and Tasks
+app.get('/api/search/global', (req: Request, res: Response) => {
+  const q = String(req.query.q || '').trim().toLowerCase();
+
+  const matchedNotes = q
+    ? noteStore.filter(
+        (n) =>
+          n.title.toLowerCase().includes(q) ||
+          n.content.toLowerCase().includes(q) ||
+          (n.tags && n.tags.some((t) => t.toLowerCase().includes(q)))
+      )
+    : noteStore;
+
+  const matchedMemories = q
+    ? memoryStore.filter(
+        (m) =>
+          m.text.toLowerCase().includes(q) ||
+          m.category.toLowerCase().includes(q)
+      )
+    : memoryStore;
+
+  const matchedTasks = q
+    ? taskStore.filter(
+        (t) =>
+          t.text.toLowerCase().includes(q) ||
+          (q === 'completed' && t.completed) ||
+          (q === 'pending' && !t.completed)
+      )
+    : taskStore;
+
+  res.json({
+    query: q,
+    notes: matchedNotes,
+    memories: matchedMemories,
+    tasks: matchedTasks,
+    counts: {
+      notes: matchedNotes.length,
+      memories: matchedMemories.length,
+      tasks: matchedTasks.length,
+      total: matchedNotes.length + matchedMemories.length + matchedTasks.length,
+    },
+  });
 });
 
 // AI Tools Suite: Safe JavaScript/TypeScript Code Execution

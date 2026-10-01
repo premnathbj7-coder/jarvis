@@ -12,11 +12,17 @@ interface MemoryModalProps {
   isOpen: boolean;
   onClose: () => void;
   onMemoryUpdate?: () => void;
+  initialQuery?: string;
 }
 
-export const MemoryModal: React.FC<MemoryModalProps> = ({ isOpen, onClose, onMemoryUpdate }) => {
+export const MemoryModal: React.FC<MemoryModalProps> = ({
+  isOpen,
+  onClose,
+  onMemoryUpdate,
+  initialQuery,
+}) => {
   const [memories, setMemories] = useState<MemoryItem[]>([]);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [searchQuery, setSearchQuery] = useState(initialQuery || '');
   const [newFact, setNewFact] = useState('');
   const [category, setCategory] = useState('user_fact');
   const [loading, setLoading] = useState(true);
@@ -43,9 +49,11 @@ export const MemoryModal: React.FC<MemoryModalProps> = ({ isOpen, onClose, onMem
 
   useEffect(() => {
     if (isOpen) {
-      fetchMemories();
+      const q = initialQuery || '';
+      setSearchQuery(q);
+      fetchMemories(q);
     }
-  }, [isOpen]);
+  }, [isOpen, initialQuery]);
 
   const handleSearch = (e: React.FormEvent) => {
     e.preventDefault();

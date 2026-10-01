@@ -12,9 +12,15 @@ interface TasksModalProps {
   isOpen: boolean;
   onClose: () => void;
   onTaskChange?: () => void;
+  highlightTaskId?: string;
 }
 
-export const TasksModal: React.FC<TasksModalProps> = ({ isOpen, onClose, onTaskChange }) => {
+export const TasksModal: React.FC<TasksModalProps> = ({
+  isOpen,
+  onClose,
+  onTaskChange,
+  highlightTaskId,
+}) => {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [newText, setNewText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -141,32 +147,43 @@ export const TasksModal: React.FC<TasksModalProps> = ({ isOpen, onClose, onTaskC
               NO ACTIVE DIRECTIVES LOGGED. ALL OBJECTIVES COMPLETE.
             </div>
           ) : (
-            tasks.map((task) => (
-              <div
-                key={task.id}
-                className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
-                  task.completed
-                    ? 'bg-slate-900/40 border-slate-800 text-slate-500'
-                    : 'bg-[#0f1b2b]/70 border-cyan-500/20 text-slate-200 hover:border-cyan-500/40'
-                }`}
-              >
-                <button
-                  onClick={() => toggleTask(task.id)}
-                  className="flex items-center gap-3 text-left flex-1"
+            tasks.map((task) => {
+              const isTargeted = task.id === highlightTaskId;
+              return (
+                <div
+                  key={task.id}
+                  className={`flex items-center justify-between p-3 rounded-xl border transition-all ${
+                    isTargeted
+                      ? 'bg-cyan-500/25 border-cyan-400 shadow-[0_0_20px_rgba(0,212,255,0.35)] ring-1 ring-cyan-400'
+                      : task.completed
+                      ? 'bg-slate-900/40 border-slate-800 text-slate-500'
+                      : 'bg-[#0f1b2b]/70 border-cyan-500/20 text-slate-200 hover:border-cyan-500/40'
+                  }`}
                 >
-                  {task.completed ? (
-                    <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
-                  ) : (
-                    <Circle className="w-4 h-4 text-cyan-400 shrink-0" />
-                  )}
-                  <span
-                    className={`text-sm ${
-                      task.completed ? 'line-through text-slate-500' : 'text-cyan-100'
-                    }`}
+                  <button
+                    onClick={() => toggleTask(task.id)}
+                    className="flex items-center gap-3 text-left flex-1"
                   >
-                    {task.text}
-                  </span>
-                </button>
+                    {task.completed ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-400 shrink-0" />
+                    ) : (
+                      <Circle className="w-4 h-4 text-cyan-400 shrink-0" />
+                    )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span
+                        className={`text-sm ${
+                          task.completed ? 'line-through text-slate-500' : 'text-cyan-100 font-medium'
+                        }`}
+                      >
+                        {task.text}
+                      </span>
+                      {isTargeted && (
+                        <span className="text-[10px] font-mono-hud text-cyan-300 bg-cyan-950/80 px-1.5 py-0.5 rounded border border-cyan-500/50">
+                          SELECTED FROM OMNIBAR
+                        </span>
+                      )}
+                    </div>
+                  </button>
 
                 <button
                   onClick={() => deleteTask(task.id)}
@@ -176,7 +193,8 @@ export const TasksModal: React.FC<TasksModalProps> = ({ isOpen, onClose, onTaskC
                   <Trash2 className="w-4 h-4" />
                 </button>
               </div>
-            ))
+            );
+          })
           )}
         </div>
       </div>

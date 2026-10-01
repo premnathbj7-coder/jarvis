@@ -41,7 +41,8 @@ const SPANISH_MARKERS = [
   'que', 'donde', 'cuando', 'porque', 'quien', 'cual', 'esto', 'esta',
   'este', 'estos', 'estas', 'pero', 'mas', 'muy', 'bien', 'bueno', 'malo',
   'hacer', 'hace', 'tiempo', 'vida', 'mundo', 'casa', 'ahora', 'siempre',
-  'nunca', 'claro', 'oye', 'mira', 'saludos', 'usted', 'tu', 'yo', 'nosotros'
+  'nunca', 'claro', 'oye', 'mira', 'saludos', 'usted', 'tu', 'yo', 'nosotros',
+  'hoy', 'dia', 'favor', 'es', 'son', 'ayuda', 'necesito', 'sabes', 'puedes', 'hora'
 ];
 
 const HINDI_MARKERS = [
@@ -64,6 +65,21 @@ const GERMAN_MARKERS = [
   'hallo', 'guten tag', 'danke', 'bitte', 'ja', 'nein', 'wie', 'warum', 'was'
 ];
 
+const TANGLISH_MARKERS = [
+  'vanakkam', 'epdi', 'eppadi', 'irukinga', 'irukenga', 'irukku', 'iruku',
+  'enna', 'panreenga', 'panringa', 'pannu', 'pannunga', 'sollunga', 'sollu',
+  'seri', 'illa', 'illai', 'romba', 'nalla', 'nanba', 'thala', 'machan',
+  'machi', 'kudunga', 'vaanga', 'ponga', 'paaru', 'paravala', 'ippo',
+  'appo', 'eppo', 'inga', 'anga', 'enga', 'oru', 'rendu', 'aama', 'aamanga',
+  'theriyum', 'theriyuma', 'puriyala', 'puriyum', 'venum', 'vendaam',
+  'podu', 'podunga', 'edunga', 'kelu', 'kelunga', 'kooda', 'mattum',
+  'thambi', 'anna', 'akka', 'amma', 'appa', 'namma', 'ungalukku',
+  'enakku', 'unakku', 'avan', 'aval', 'avanga', 'adhu', 'idhu', 'edhu',
+  'yaar', 'yaaru', 'eppovum', 'kitta', 'paathen', 'vanten',
+  'solren', 'seiyunga', 'pannalam', 'mudiyum', 'mudiyala', 'thaan', 'dhana', 'la'
+];
+
+const TAMIL_CHARS_REGEX = /[\u0B80-\u0BFF]/;
 const JAPANESE_CHARS_REGEX = /[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff]/;
 const CHINESE_CHARS_REGEX = /[\u4e00-\u9fff]/;
 const CYRILLIC_CHARS_REGEX = /[\u0400-\u04ff]/;
@@ -126,16 +142,36 @@ export function detectLanguageAndStyle(text: string): DetectedLanguage {
     };
   }
 
-  const words = trimmed.toLowerCase().split(/[\s,.;:!?()"'`-]+/).filter(Boolean);
+  // Tamil script detection
+  if (TAMIL_CHARS_REGEX.test(trimmed)) {
+    const hasLatinWords = /[a-zA-Z]{2,}/.test(trimmed);
+    return {
+      code: 'ta-IN',
+      name: hasLatinWords ? 'Tanglish (Tamil-English)' : 'Tamil',
+      isMixed: hasLatinWords,
+      mixedLanguages: hasLatinWords ? ['Tamil', 'English'] : undefined,
+      formality: 'formal',
+      confidence: 0.95,
+    };
+  }
+
+  const normalizedText = trimmed
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '');
+
+  const words = trimmed.toLowerCase().split(/[\s,.;:!?¿¡()"'`-]+/).filter(Boolean);
+  const normalizedWords = normalizedText.split(/[\s,.;:!?¿¡()"'`-]+/).filter(Boolean);
   const totalWords = words.length;
 
   // Count language marker occurrences
   const countMatches = (markers: string[]) => {
-    return words.filter((w) => markers.includes(w)).length;
+    return normalizedWords.filter((w) => markers.includes(w)).length;
   };
 
   const tagalogCount = countMatches(TAGALOG_MARKERS);
   const spanishCount = countMatches(SPANISH_MARKERS);
+  const tamilCount = countMatches(TANGLISH_MARKERS);
   const hindiCount = countMatches(HINDI_MARKERS);
   const frenchCount = countMatches(FRENCH_MARKERS);
   const germanCount = countMatches(GERMAN_MARKERS);
@@ -146,8 +182,8 @@ export function detectLanguageAndStyle(text: string): DetectedLanguage {
 
   // Formality detection
   let formality: 'formal' | 'casual' | 'neutral' = 'neutral';
-  const hasHonorifics = /\b(po|opo|sir|ma'am|mr|mrs|dr|usted|kindly|please)\b/i.test(trimmed);
-  const hasSlang = /\b(pre|tol|pare|bro|dude|sup|yo|bhai|yaar|chilling|wbu|idk|ano na)\b/i.test(trimmed);
+  const hasHonorifics = /\b(po|opo|sir|ma'am|mr|mrs|dr|usted|kindly|please|vanakkam|sollunga|pannunga|vaanga|irukinga|irukenga|seiyunga|ayya|aiya)\b/i.test(trimmed);
+  const hasSlang = /\b(pre|tol|pare|bro|dude|sup|yo|bhai|yaar|chilling|wbu|idk|ano na|thala|machan|machi|nanba|thambi|mame|da|macha)\b/i.test(trimmed);
   if (hasHonorifics) formality = 'formal';
   else if (hasSlang) formality = 'casual';
 
@@ -197,7 +233,37 @@ export function detectLanguageAndStyle(text: string): DetectedLanguage {
     };
   }
 
-  // 3. Hinglish Detection (Hindi + English)
+  // 3. Tanglish Detection (Tamil + English code-switching or Romanized Tamil)
+  if (
+    tamilCount > 0 &&
+    (englishCount > 0 ||
+      words.some((w) =>
+        /^(help|check|open|system|note|notes|schedule|class|translate|search|time|status|date|weather|call)$/i.test(w)
+      ) ||
+      totalWords >= 2)
+  ) {
+    return {
+      code: 'ta-IN',
+      name: 'Tanglish (Tamil-English)',
+      isMixed: true,
+      mixedLanguages: ['Tamil', 'English'],
+      formality,
+      confidence: 0.92,
+    };
+  }
+
+  // Pure or predominant Tamil in Latin characters
+  if (tamilCount >= 2 || (tamilCount >= 1 && totalWords <= 3 && englishCount === 0)) {
+    return {
+      code: 'ta-IN',
+      name: 'Tamil',
+      isMixed: false,
+      formality,
+      confidence: 0.88,
+    };
+  }
+
+  // 4. Hinglish Detection (Hindi + English)
   if (hindiCount > 0 && (englishCount > 0 || totalWords > 2)) {
     return {
       code: 'hi-IN',
@@ -253,7 +319,7 @@ export function cleanSourceText(text: string): string {
   // Strip leading colons, hyphens again if exposed
   cleaned = cleaned.replace(/^[:,\-\s]+/, '').trim();
   // Strip polite/filler particles from beginning
-  cleaned = cleaned.replace(/^(?:po|opo|naman|nga|naman\s+po|nga\s+po|please|kindly|por\s+favor|porfa|para\s+sa\s+akin|for\s+me)\b\s*/i, '').trim();
+  cleaned = cleaned.replace(/^(?:po|opo|naman|nga|naman\s+po|nga\s+po|please|kindly|por\s+favor|porfa|para\s+sa\s+akin|for\s+me|konjam|idha|idhu|enakku)\b\s*/i, '').trim();
   // Strip leading colons, hyphens again
   cleaned = cleaned.replace(/^[:,\-\s]+/, '').trim();
   // Strip enclosing quotes
@@ -266,8 +332,8 @@ export function cleanSourceText(text: string): string {
     cleaned = cleaned.slice(1, -1).trim();
   }
   // Strip polite/filler particles again
-  cleaned = cleaned.replace(/^(?:po|opo|naman|nga|naman\s+po|nga\s+po|please|kindly|por\s+favor|porfa|para\s+sa\s+akin|for\s+me)\b\s*/i, '').trim();
-  cleaned = cleaned.replace(/\s*\b(?:po|opo|naman|nga|naman\s+po|nga\s+po|please|kindly|por\s+favor|porfa|para\s+sa\s+akin|for\s+me)$/i, '').trim();
+  cleaned = cleaned.replace(/^(?:po|opo|naman|nga|naman\s+po|nga\s+po|please|kindly|por\s+favor|porfa|para\s+sa\s+akin|for\s+me|konjam|idha|idhu|enakku)\b\s*/i, '').trim();
+  cleaned = cleaned.replace(/\s*\b(?:po|opo|naman|nga|naman\s+po|nga\s+po|please|kindly|por\s+favor|porfa|para\s+sa\s+akin|for\s+me|konjam|idha|idhu|enakku|pa|nu)$/i, '').trim();
   return cleaned;
 }
 
@@ -329,6 +395,9 @@ export function normalizeLanguageTarget(rawTarget: string): { name: string; code
     holandés: { name: 'Dutch', code: 'nl-NL' },
     latin: { name: 'Latin', code: 'la' },
     tamil: { name: 'Tamil', code: 'ta-IN' },
+    tanglish: { name: 'Tanglish', code: 'ta-IN' },
+    thamizh: { name: 'Tamil', code: 'ta-IN' },
+    tamizh: { name: 'Tamil', code: 'ta-IN' },
   };
 
   return map[t] || null;
@@ -341,7 +410,7 @@ export function parseTranslationRequest(message: string): TranslationRequest {
   const trimmed = message.trim();
 
   // 1. Quoted source text pattern: translate [particles] "..." to/into/in/sa/al <language>
-  const quotedRegex = /(?:can you |please |kindly )?(?:translate|pakisalin|paki\s+salin|pakitranslate|paki\s+translate|traduce|traducir)(?:\s+(?:po|opo|naman|nga|naman\s+po|nga\s+po|please|por\s+favor|porfa|para\s+sa\s+akin|for\s+me))?\s+["'“«](.+?)["'”»]\s+(?:to|into|in|sa|al|a)\s+([a-zA-Z\u00C0-\u024F]+)/i;
+  const quotedRegex = /(?:can you |please |kindly )?(?:translate|pakisalin|paki\s+salin|pakitranslate|paki\s+translate|traduce|traducir|translate\s+pannunga|translate\s+pannu)(?:\s+(?:po|opo|naman|nga|naman\s+po|nga\s+po|please|por\s+favor|porfa|para\s+sa\s+akin|for\s+me|konjam|idha|idhu))?\s+["'“«](.+?)["'”»]\s+(?:to|into|in|sa|al|a)\s+([a-zA-Z\u00C0-\u024F]+)/i;
   const quotedMatch = trimmed.match(quotedRegex);
   if (quotedMatch) {
     const rawText = cleanSourceText(quotedMatch[1]);
@@ -377,7 +446,7 @@ export function parseTranslationRequest(message: string): TranslationRequest {
   }
 
   // 3. Pattern: "Translate [this] to/into/sa/al <language>[: ] <text>"
-  const prefixLangRegex = /(?:can you |please |kindly )?(?:translate|pakisalin|paki\s+salin|pakitranslate|paki\s+translate|traduce|traducir)(?:\s+(?:this|esto|nito|ito|po|naman|por\s+favor))?\s+(?:to|into|in|sa|al|a)\s+([a-zA-Z\u00C0-\u024F]+)\s*[:,-]?\s*(.+)$/i;
+  const prefixLangRegex = /(?:can you |please |kindly )?(?:translate|pakisalin|paki\s+salin|pakitranslate|paki\s+translate|traduce|traducir|translate\s+pannunga|translate\s+pannu)(?:\s+(?:this|esto|nito|ito|po|naman|por\s+favor|idha|idhu|konjam))?\s+(?:to|into|in|sa|al|a)\s+([a-zA-Z\u00C0-\u024F]+)\s*[:,-]?\s*(.+)$/i;
   const prefixMatch = trimmed.match(prefixLangRegex);
   if (prefixMatch) {
     const rawTarget = prefixMatch[1].trim();
@@ -395,7 +464,7 @@ export function parseTranslationRequest(message: string): TranslationRequest {
   }
 
   // 4. Pattern: translate <text> to/into/sa/al <language>
-  const toLangRegex = /(?:can you |please |kindly )?(?:translate|pakisalin|paki\s+salin|pakitranslate|paki\s+translate|traduce|traducir)\s+(.+?)\s+(?:to|into|sa|al|a)\s+([a-zA-Z\u00C0-\u024F]+)$/i;
+  const toLangRegex = /(?:can you |please |kindly )?(?:translate|pakisalin|paki\s+salin|pakitranslate|paki\s+translate|traduce|traducir|translate\s+pannunga|translate\s+pannu)\s+(.+?)\s+(?:to|into|sa|al|a)\s+([a-zA-Z\u00C0-\u024F]+)$/i;
   const toLangMatch = trimmed.match(toLangRegex);
   if (toLangMatch) {
     const candidateText = toLangMatch[1].trim();
@@ -415,8 +484,8 @@ export function parseTranslationRequest(message: string): TranslationRequest {
   }
 
   // 5. Unclear target language: user asked to translate, but did not specify the target language!
-  // e.g. "Can you translate this for me: Hello world", "Translate this sentence", "Paki translate nito"
-  const missingTargetRegex = /^(?:(?:can you |please |kindly )?(?:translate|pakisalin|paki\s+salin|pakitranslate|paki\s+translate|traduce)(?:\s+(?:this for me|this|nito|ito|the following|the text|esto))?\s*(?:[:,-]|\s+|$)(.*))$/i;
+  // e.g. "Can you translate this for me: Hello world", "Translate this sentence", "Paki translate nito", "Konjam idha translate pannunga for me: Good morning"
+  const missingTargetRegex = /^(?:(?:can you |please |kindly |konjam |idha |idhu |paki\s+)*(?:translate|pakisalin|paki\s+salin|pakitranslate|paki\s+translate|traduce|translate\s+pannunga|translate\s+pannu)(?:\s+(?:this for me|this|nito|ito|the following|the text|esto|idha|idhu|for me|pa))*\s*(?:[:,-]|\s+|$)(.*))$/i;
   const missingMatch = trimmed.match(missingTargetRegex);
   if (missingMatch) {
     let potentialText = missingMatch[1]?.trim();
@@ -432,6 +501,8 @@ export function parseTranslationRequest(message: string): TranslationRequest {
       let clarification = 'Certainly, sir. Which target language would you like me to translate this into?';
       if (userLang.name.includes('Taglish') || userLang.code === 'fil-PH') {
         clarification = 'Sige po sir, sa anong wika (target language) niyo po gustong isalin ito?';
+      } else if (userLang.name.includes('Tanglish') || userLang.code === 'ta-IN') {
+        clarification = 'Seri sir, entha target language-la translate pannanum nu sollunga?';
       } else if (userLang.code === 'es-ES') {
         clarification = 'Con gusto, señor. ¿A qué idioma de destino le gustaría que traduzca el texto?';
       }
@@ -467,6 +538,8 @@ export function executeLocalTranslation(text: string, targetLanguage: string): s
       japanese: 'こんにちは',
       hindi: 'नमस्ते',
       italian: 'Ciao',
+      tamil: 'வணக்கம்',
+      tanglish: 'Vanakkam',
     },
     'hello world': {
       spanish: 'Hola mundo',
@@ -477,6 +550,8 @@ export function executeLocalTranslation(text: string, targetLanguage: string): s
       japanese: 'こんにちは世界',
       hindi: 'नमस्ते दुनिया',
       italian: 'Ciao mondo',
+      tamil: 'வணக்கம் உலகம்',
+      tanglish: 'Vanakkam world',
     },
     'good morning': {
       spanish: 'Buenos días',
@@ -487,6 +562,8 @@ export function executeLocalTranslation(text: string, targetLanguage: string): s
       japanese: 'おはようございます',
       hindi: 'शुभ प्रभात',
       italian: 'Buongiorno',
+      tamil: 'காலை வணக்கம்',
+      tanglish: 'Kaalai vanakkam',
     },
     'good afternoon': {
       spanish: 'Buenas tardes',
@@ -497,6 +574,8 @@ export function executeLocalTranslation(text: string, targetLanguage: string): s
       japanese: 'こんにちは',
       hindi: 'शुभ दोपहर',
       italian: 'Buon pomeriggio',
+      tamil: 'மதிய வணக்கம்',
+      tanglish: 'Madhiya vanakkam',
     },
     'thank you': {
       spanish: 'Gracias',
@@ -507,6 +586,8 @@ export function executeLocalTranslation(text: string, targetLanguage: string): s
       japanese: 'ありがとうございます',
       hindi: 'धन्यवाद',
       italian: 'Grazie',
+      tamil: 'நன்றி',
+      tanglish: 'Romba nandri',
     },
     'thanks': {
       spanish: 'Gracias',
@@ -517,6 +598,8 @@ export function executeLocalTranslation(text: string, targetLanguage: string): s
       japanese: 'ありがとう',
       hindi: 'शुक्रिया',
       italian: 'Grazie',
+      tamil: 'நன்றி',
+      tanglish: 'Nandri nanba',
     },
     'how are you': {
       spanish: '¿Cómo estás?',
@@ -527,6 +610,8 @@ export function executeLocalTranslation(text: string, targetLanguage: string): s
       japanese: 'お元気ですか？',
       hindi: 'आप कैसे हैं?',
       italian: 'Come stai?',
+      tamil: 'எப்படி இருக்கிறீர்கள்?',
+      tanglish: 'Epdi irukinga?',
     },
     'all systems nominal': {
       spanish: 'Todos los sistemas nominales',
@@ -537,6 +622,8 @@ export function executeLocalTranslation(text: string, targetLanguage: string): s
       japanese: 'すべてのシステムは正常です',
       hindi: 'सभी प्रणालियाँ सामान्य हैं',
       italian: 'Tutti i sistemi sono nominali',
+      tamil: 'எல்லா அமைப்புகளும் சரியாக உள்ளன',
+      tanglish: 'All systems nominal ah irukku',
     },
   };
 
@@ -579,6 +666,22 @@ export function executeLocalTranslation(text: string, targetLanguage: string): s
       'notes': 'Notizen', 'task': 'Aufgabe', 'tasks': 'Aufgaben', 'memory': 'Speicher',
       'to': 'zu', 'in': 'in', 'for': 'für', 'the': 'das', 'and': 'und', 'of': 'von',
     },
+    tamil: {
+      'system': 'அமைப்பு', 'systems': 'அமைப்புகள்', 'status': 'நிலை',
+      'online': 'ஆன்லைனில்', 'ready': 'தயார்', 'good': 'நல்ல', 'bad': 'மோசமான',
+      'yes': 'ஆம்', 'no': 'இல்லை', 'welcome': 'வரவேற்பு', 'help': 'உதவி',
+      'friend': 'நண்பன்', 'work': 'வேலை', 'code': 'குறியீடு', 'note': 'குறிப்பு',
+      'notes': 'குறிப்புகள்', 'task': 'பணி', 'tasks': 'பணிகள்', 'memory': 'நினைவகம்',
+      'to': 'க்கு', 'in': 'இல்', 'for': 'க்காக', 'the': 'அந்த', 'and': 'மற்றும்', 'of': 'இன்',
+    },
+    tanglish: {
+      'system': 'system', 'systems': 'systems', 'status': 'status',
+      'online': 'online', 'ready': 'ready ah irukku', 'good': 'nalla', 'bad': 'mosam',
+      'yes': 'aama', 'no': 'illa', 'welcome': 'welcome', 'help': 'help',
+      'friend': 'nanba', 'work': 'vela', 'code': 'code', 'note': 'note',
+      'notes': 'notes', 'task': 'task', 'tasks': 'tasks', 'memory': 'memory',
+      'to': 'ku', 'in': 'la', 'for': 'kaga', 'the': 'andha', 'and': 'apram', 'of': 'oda',
+    },
   };
 
   const targetVocab = vocab[target] || (target === 'filipino' ? vocab.tagalog : undefined);
@@ -606,30 +709,98 @@ export function adaptCommandResultLanguage(result: string, lang: DetectedLanguag
   if (lang.code === 'en-US' && !lang.isMixed) return result;
 
   if (lang.name.includes('Taglish') || lang.code === 'fil-PH') {
+    if (result.startsWith('The current time is')) {
+      return result.replace('The current time is', 'Ang kasalukuyang oras po ay');
+    }
+    if (result.startsWith('Today is')) {
+      return result.replace('Today is', 'Ngayon po ay');
+    }
     if (result.startsWith('System Status: Nominal.')) {
       return result.replace('System Status: Nominal.', 'All protocols nominal po, sir. Katayuan ng sistema:');
     }
     if (result.startsWith('Added task to your list:')) {
       return result.replace('Added task to your list:', 'Naidagdag ko na po ang task sa inyong list:');
     }
-    if (result.startsWith('Note saved:')) {
-      return result.replace('Note saved:', 'Na-save ko na po ang note:');
+    if (result.startsWith('Note created:') || result.startsWith('Note saved:')) {
+      return result.replace(/Note (?:created|saved):/, 'Nagawa na po ang note:');
     }
-    if (result.startsWith('Timer started for')) {
-      return result.replace('Timer started for', 'Nagsimula na po ang timer para sa');
+    if (result.startsWith('Timer set for') || result.startsWith('Timer started for')) {
+      return result.replace(/Timer (?:set|started) for/, 'Naitakda na po ang timer para sa');
+    }
+    if (result.startsWith('I have committed that to local memory:')) {
+      return result.replace('I have committed that to local memory:', 'Na-commit ko na po sa local memory:');
+    }
+    if (result.startsWith('The calculation result for')) {
+      return result.replace('The calculation result for', 'Ang calculation result po para sa');
     }
   } else if (lang.name.includes('Spanglish') || lang.code === 'es-ES') {
+    if (result.startsWith('The current time is')) {
+      return result.replace('The current time is', 'La hora actual es');
+    }
+    if (result.startsWith('Today is')) {
+      return result.replace('Today is', 'Hoy es');
+    }
     if (result.startsWith('System Status: Nominal.')) {
       return result.replace('System Status: Nominal.', 'Estado del sistema nominal, señor.');
     }
     if (result.startsWith('Added task to your list:')) {
       return result.replace('Added task to your list:', 'Tarea agregada a su lista:');
     }
-    if (result.startsWith('Note saved:')) {
-      return result.replace('Note saved:', 'Nota guardada exitosamente:');
+    if (result.startsWith('Note created:') || result.startsWith('Note saved:')) {
+      return result.replace(/Note (?:created|saved):/, 'Nota creada exitosamente:');
     }
-    if (result.startsWith('Timer started for')) {
-      return result.replace('Timer started for', 'Temporizador iniciado por');
+    if (result.startsWith('Timer set for') || result.startsWith('Timer started for')) {
+      return result.replace(/Timer (?:set|started) for/, 'Temporizador iniciado para');
+    }
+    if (result.startsWith('I have committed that to local memory:')) {
+      return result.replace('I have committed that to local memory:', 'He guardado esto en la memoria local:');
+    }
+    if (result.startsWith('The calculation result for')) {
+      return result.replace('The calculation result for', 'El resultado del cálculo para');
+    }
+  } else if (lang.name.includes('Hinglish') || lang.code === 'hi-IN') {
+    if (result.startsWith('The current time is')) {
+      return result.replace('The current time is', 'Abhi ka samay hai');
+    }
+    if (result.startsWith('Today is')) {
+      return result.replace('Today is', 'Aaj hai');
+    }
+    if (result.startsWith('System Status: Nominal.')) {
+      return result.replace('System Status: Nominal.', 'System status nominal hai, sir.');
+    }
+    if (result.startsWith('Added task to your list:')) {
+      return result.replace('Added task to your list:', 'Aapki task list mein task add kar diya hai:');
+    }
+    if (result.startsWith('Note created:') || result.startsWith('Note saved:')) {
+      return result.replace(/Note (?:created|saved):/, 'Note save kar diya hai:');
+    }
+    if (result.startsWith('Timer set for') || result.startsWith('Timer started for')) {
+      return result.replace(/Timer (?:set|started) for/, 'Timer set ho gaya hai');
+    }
+  } else if (lang.name.includes('Tanglish') || lang.name.includes('Tamil') || lang.code === 'ta-IN') {
+    if (result.startsWith('The current time is')) {
+      return result.replace('The current time is', 'Ippo time enna na:');
+    }
+    if (result.startsWith('Today is')) {
+      return result.replace('Today is', 'Innaiku date:');
+    }
+    if (result.startsWith('System Status: Nominal.')) {
+      return result.replace('System Status: Nominal.', 'All protocols nominal ah irukku, sir. System status:');
+    }
+    if (result.startsWith('Added task to your list:')) {
+      return result.replace('Added task to your list:', 'Task unga list la add panniten, sir:');
+    }
+    if (result.startsWith('Note created:') || result.startsWith('Note saved:')) {
+      return result.replace(/Note (?:created|saved):/, 'Note save aaiduchu, sir:');
+    }
+    if (result.startsWith('Timer set for') || result.startsWith('Timer started for')) {
+      return result.replace(/Timer (?:set|started) for/, 'Timer set panniten for');
+    }
+    if (result.startsWith('I have committed that to local memory:')) {
+      return result.replace('I have committed that to local memory:', 'Local memory la save panniten, sir:');
+    }
+    if (result.startsWith('The calculation result for')) {
+      return result.replace('The calculation result for', 'Calculation result:');
     }
   }
 

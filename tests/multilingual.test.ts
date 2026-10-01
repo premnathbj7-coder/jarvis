@@ -5,6 +5,7 @@ import {
   parseTranslationRequest,
   executeLocalTranslation,
   normalizeLanguageTarget,
+  adaptCommandResultLanguage,
 } from '../src/utils/languageEngine';
 
 describe('Multilingual Engine - Language & Style Detection', () => {
@@ -223,3 +224,126 @@ describe('Multilingual Engine - Translation Execution & Fidelity', () => {
     assert.strictEqual(de?.name, 'German');
   });
 });
+
+describe('Multilingual Engine - Command Result Adaptation & Response Fidelity', () => {
+  it('adapts system status and task directives into Taglish', () => {
+    const lang = detectLanguageAndStyle('Kumusta JARVIS, check system status po please?');
+    assert.strictEqual(lang.name, 'Taglish (Tagalog-English)');
+
+    const adaptedStatus = adaptCommandResultLanguage(
+      'System Status: Nominal. CPU Load is approximately 12%.',
+      lang
+    );
+    assert.match(adaptedStatus, /All protocols nominal po, sir/);
+
+    const adaptedTask = adaptCommandResultLanguage(
+      'Added task to your list: "Calibrate neural visualizer".',
+      lang
+    );
+    assert.match(adaptedTask, /Naidagdag ko na po ang task sa inyong list:/);
+  });
+
+  it('adapts system status and task directives into Spanish/Spanglish', () => {
+    const lang = detectLanguageAndStyle('Hola hermano, add a task for me por favor');
+    assert.strictEqual(lang.name, 'Spanglish (Spanish-English)');
+
+    const adaptedStatus = adaptCommandResultLanguage(
+      'System Status: Nominal. Memory utilization is 25%.',
+      lang
+    );
+    assert.match(adaptedStatus, /Estado del sistema nominal, señor\./);
+
+    const adaptedTask = adaptCommandResultLanguage(
+      'Added task to your list: "Deploy new firmware".',
+      lang
+    );
+    assert.match(adaptedTask, /Tarea agregada a su lista:/);
+  });
+
+  it('preserves English unmodified when user query is pure English', () => {
+    const lang = detectLanguageAndStyle('Please check the current system diagnostic status.');
+    assert.strictEqual(lang.code, 'en-US');
+    assert.strictEqual(lang.isMixed, false);
+
+    const original = 'System Status: Nominal. CPU Load is approximately 8%.';
+    const adapted = adaptCommandResultLanguage(original, lang);
+    assert.strictEqual(adapted, original);
+  });
+
+  it('adapts time and date reports into active dialect', () => {
+    const taglishLang = detectLanguageAndStyle('Ano oras na po sir?');
+    const timeAdapted = adaptCommandResultLanguage('The current time is 04:30 PM.', taglishLang);
+    assert.match(timeAdapted, /Ang kasalukuyang oras po ay/);
+
+    const spanishLang = detectLanguageAndStyle('¿Qué día es hoy por favor?');
+    const dateAdapted = adaptCommandResultLanguage('Today is Thursday, October 1, 2026.', spanishLang);
+    assert.match(dateAdapted, /Hoy es/);
+
+    const tanglishLang = detectLanguageAndStyle('Vanakkam JARVIS, time enna ippo?');
+    const tanglishTimeAdapted = adaptCommandResultLanguage('The current time is 04:30 PM.', tanglishLang);
+    assert.match(tanglishTimeAdapted, /Ippo time enna na:/);
+
+    const tanglishStatusAdapted = adaptCommandResultLanguage(
+      'System Status: Nominal. CPU Load is approximately 8%.',
+      tanglishLang
+    );
+    assert.match(tanglishStatusAdapted, /All protocols nominal ah irukku, sir/);
+  });
+});
+
+describe('Multilingual Engine - Tanglish (Tamil-English) Integration', () => {
+  it('detects code-switched Tanglish queries', () => {
+    const res = detectLanguageAndStyle('Vanakkam JARVIS, system status epdi irukku?');
+    assert.strictEqual(res.code, 'ta-IN');
+    assert.strictEqual(res.name, 'Tanglish (Tamil-English)');
+    assert.strictEqual(res.isMixed, true);
+    assert.strictEqual(res.formality, 'formal');
+  });
+
+  it('detects casual Tanglish with local slang', () => {
+    const res = detectLanguageAndStyle('Enna thala, check the audio visualizer machan');
+    assert.strictEqual(res.code, 'ta-IN');
+    assert.strictEqual(res.name, 'Tanglish (Tamil-English)');
+    assert.strictEqual(res.isMixed, true);
+    assert.strictEqual(res.formality, 'casual');
+  });
+
+  it('detects native Tamil script', () => {
+    const res = detectLanguageAndStyle('வணக்கம் எப்படி இருக்கிறீர்கள்?');
+    assert.strictEqual(res.code, 'ta-IN');
+    assert.strictEqual(res.name, 'Tamil');
+    assert.strictEqual(res.isMixed, false);
+  });
+
+  it('parses translation to Tanglish and Tamil', () => {
+    const req1 = parseTranslationRequest('Can you translate "Good morning my friend" to Tanglish?');
+    assert.strictEqual(req1.isTranslation, true);
+    assert.strictEqual(req1.sourceText, 'Good morning my friend');
+    assert.strictEqual(req1.targetLanguage, 'Tanglish');
+    assert.strictEqual(req1.targetLanguageCode, 'ta-IN');
+
+    const req2 = parseTranslationRequest('Translate "All systems nominal" into Tamil');
+    assert.strictEqual(req2.isTranslation, true);
+    assert.strictEqual(req2.targetLanguage, 'Tamil');
+    assert.strictEqual(req2.targetLanguageCode, 'ta-IN');
+  });
+
+  it('asks for clarification in Tanglish when target language is unspecified', () => {
+    const req = parseTranslationRequest('Konjam idha translate pannunga for me: Good morning');
+    assert.strictEqual(req.isTranslation, true);
+    assert.strictEqual(req.needsClarification, true);
+    assert.match(req.clarificationPrompt || '', /Seri sir, entha target language-la translate pannanum/);
+  });
+
+  it('executes local translation for Tanglish and Tamil', () => {
+    const tanglishHello = executeLocalTranslation('hello world', 'tanglish');
+    assert.strictEqual(tanglishHello, 'Vanakkam world');
+
+    const tanglishNominal = executeLocalTranslation('all systems nominal', 'tanglish');
+    assert.strictEqual(tanglishNominal, 'All systems nominal ah irukku');
+
+    const tamilHello = executeLocalTranslation('hello world', 'tamil');
+    assert.strictEqual(tamilHello, 'வணக்கம் உலகம்');
+  });
+});
+

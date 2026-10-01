@@ -1,6 +1,9 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Mic,
+  MicOff,
+  Languages,
+  Radio,
   Settings as SettingsIcon,
   CheckSquare,
   FileText,
@@ -79,6 +82,11 @@ export default function App() {
   const [isEducationOpen, setIsEducationOpen] = useState(false);
   const [educationInitialTab, setEducationInitialTab] = useState<'briefing' | 'notes' | 'courses' | 'assignments' | 'study'>('briefing');
 
+  // Deep-link targeted selections from Omnibar global search
+  const [selectedNoteId, setSelectedNoteId] = useState<string | undefined>(undefined);
+  const [memorySearchInitial, setMemorySearchInitial] = useState<string | undefined>(undefined);
+  const [highlightTaskId, setHighlightTaskId] = useState<string | undefined>(undefined);
+
   // 30-second Idle detection for synchronized ambient shell breathing
   const { isIdle, idleSeconds, resetIdle, simulateIdle } = useIdleTimer(30000);
 
@@ -124,6 +132,137 @@ export default function App() {
     const interval = setInterval(refreshSubsystems, 10000);
     return () => clearInterval(interval);
   }, []);
+
+  // Web Speech API Voice Recognition in App Component (Tamil, English, Tanglish)
+  const [isListening, setIsListening] = useState(false);
+  const [speechLanguage, setSpeechLanguage] = useState<'tanglish' | 'ta-IN' | 'en-US' | 'auto'>('tanglish');
+  const [interimTranscript, setInterimTranscript] = useState('');
+  const [speechSupported, setSpeechSupported] = useState(true);
+  const recognitionRef = useRef<any>(null);
+  const audioIntervalRef = useRef<any>(null);
+
+  // Active language in conversation
+  const activeLanguage = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      if (messages[i].language) {
+        return messages[i].language;
+      }
+    }
+    return 'ta-IN';
+  }, [messages]);
+
+  useEffect(() => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+    if (!SpeechRecognition) {
+      setSpeechSupported(false);
+    }
+  }, []);
+
+  const getLanguageCodeForMode = (mode: 'tanglish' | 'ta-IN' | 'en-US' | 'auto') => {
+    if (mode === 'en-US') return 'en-US';
+    if (mode === 'ta-IN') return 'ta-IN';
+    if (mode === 'tanglish') return 'ta-IN'; // ta-IN captures Tamil and English phonetics
+    return activeLanguage || 'ta-IN';
+  };
+
+  const stopListening = () => {
+    if (audioIntervalRef.current) {
+      clearInterval(audioIntervalRef.current);
+      audioIntervalRef.current = null;
+    }
+    setIsListening(false);
+    setAudioLevel(0);
+    setAssistantState((prev) => (prev === 'LISTENING' ? 'IDLE' : prev));
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.stop();
+      } catch {}
+    }
+  };
+
+  const startListening = () => {
+    const SpeechRecognition =
+      (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+
+    if (!SpeechRecognition) {
+      console.warn('Web Speech API is not supported in this browser.');
+      return;
+    }
+
+    if (recognitionRef.current) {
+      try {
+        recognitionRef.current.abort();
+      } catch {}
+    }
+
+    try {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true;
+      recognition.maxAlternatives = 1;
+      recognition.lang = getLanguageCodeForMode(speechLanguage);
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setAssistantState('LISTENING');
+        setInterimTranscript('');
+        let phase = 0;
+        audioIntervalRef.current = setInterval(() => {
+          phase += 0.25;
+          setAudioLevel(0.4 + Math.sin(phase) * 0.35);
+        }, 100);
+      };
+
+      recognition.onresult = (event: any) => {
+        let interim = '';
+        let final = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          const item = event.results[i];
+          if (item.isFinal) {
+            final += item[0].transcript;
+          } else {
+            interim += item[0].transcript;
+          }
+        }
+
+        if (interim) {
+          setInterimTranscript(interim);
+          setAudioLevel(0.85);
+        }
+
+        if (final.trim()) {
+          setInterimTranscript(final.trim());
+          stopListening();
+          handleSendMessage(final.trim());
+        }
+      };
+
+      recognition.onerror = (event: any) => {
+        console.warn('Speech recognition notice:', event.error);
+        stopListening();
+      };
+
+      recognition.onend = () => {
+        stopListening();
+      };
+
+      recognitionRef.current = recognition;
+      recognition.start();
+    } catch (err) {
+      console.error('Failed to start speech recognition:', err);
+      stopListening();
+    }
+  };
+
+  const toggleListening = () => {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  };
 
   // Send message to backend
   const handleSendMessage = async (text: string) => {
@@ -269,7 +408,7 @@ export default function App() {
     setAssistantState(nextState);
   };
 
-  const handleOmnibarAction = (actionId: string) => {
+  const handleOmnibarAction = (actionId: string, payload?: string) => {
     recordActionInteraction(actionId);
     switch (actionId) {
       case 'education':
@@ -290,15 +429,18 @@ export default function App() {
         setIsWorkflowsOpen(true);
         break;
       case 'tasks':
+        setHighlightTaskId(payload);
         setIsTasksOpen(true);
         break;
       case 'notes':
+        setSelectedNoteId(payload);
         setIsNotesOpen(true);
         break;
       case 'timers':
         setIsTimersOpen(true);
         break;
       case 'memory':
+        setMemorySearchInitial(payload);
         setIsMemoryOpen(true);
         break;
       case 'system':
@@ -378,6 +520,34 @@ export default function App() {
 
           {/* Quick HUD Navigation Toolbar */}
           <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
+            {/* Quick Speech Input Button (Tamil, English, Tanglish) */}
+            <button
+              onClick={toggleListening}
+              className={`px-2.5 py-1.5 rounded-xl border text-xs font-mono-hud flex items-center gap-1.5 transition-all shadow-[0_0_10px_rgba(0,212,255,0.15)] ${
+                isListening
+                  ? 'bg-rose-500/25 border-rose-500 text-rose-200 animate-pulse shadow-[0_0_12px_rgba(244,63,94,0.4)]'
+                  : 'bg-cyan-950/40 hover:bg-cyan-900/60 border-cyan-500/40 text-cyan-200'
+              }`}
+              title={`Web Speech API: ${speechLanguage.toUpperCase()} - Click to speak in Tamil, English, or Tanglish`}
+            >
+              {isListening ? (
+                <MicOff className="w-3.5 h-3.5 text-rose-300 animate-pulse" />
+              ) : (
+                <Mic className="w-3.5 h-3.5 text-cyan-400" />
+              )}
+              <span className="hidden xl:inline text-[11px] font-bold">
+                {isListening
+                  ? 'LISTENING...'
+                  : speechLanguage === 'tanglish'
+                  ? 'TANGLISH'
+                  : speechLanguage === 'ta-IN'
+                  ? 'தமிழ்'
+                  : speechLanguage === 'en-US'
+                  ? 'ENGLISH'
+                  : 'AUTO'}
+              </span>
+            </button>
+
             {/* Quick Command Omnibar Launcher */}
             <button
               onClick={() => setIsOmnibarOpen(true)}
@@ -563,16 +733,123 @@ export default function App() {
               </span>
             </div>
 
-            {/* Glowing Orb Canvas */}
-            <div className="py-6 flex flex-col items-center justify-center flex-1">
+            {/* Glowing Orb Canvas & Multilingual Voice Deck */}
+            <div className="py-3 flex flex-col items-center justify-center flex-1 w-full">
               <OrbVisualizer
                 state={assistantState}
                 audioLevel={audioLevel}
-                onClick={cycleOrbState}
-                size={270}
+                onClick={toggleListening}
+                size={230}
               />
-              <div className="text-[11px] font-mono-hud text-slate-400 mt-5 text-center max-w-xs">
-                Audio-reactive particle field & triple orbital ring system. Click orb to cycle simulation state.
+
+              {/* Multilingual Voice Control Deck (Tamil, English, Tanglish) */}
+              <div className="w-full max-w-sm mt-3 p-3 bg-[#06101c]/90 border border-cyan-500/35 rounded-xl shadow-lg flex flex-col gap-2">
+                <div className="flex items-center justify-between text-[11px] font-mono-hud text-cyan-300">
+                  <div className="flex items-center gap-1.5">
+                    <Radio className={`w-3.5 h-3.5 ${isListening ? 'text-rose-400 animate-pulse' : 'text-cyan-400'}`} />
+                    <span className="font-bold tracking-wider">
+                      {isListening ? 'VOICE LISTENING...' : 'VOICE ENGINE'}
+                    </span>
+                  </div>
+                  <span className="text-[10px] text-cyan-400/80">
+                    {speechLanguage === 'tanglish'
+                      ? 'TANGLISH (தமிழ்+EN)'
+                      : speechLanguage === 'ta-IN'
+                      ? 'TAMIL (தமிழ்)'
+                      : speechLanguage === 'en-US'
+                      ? 'ENGLISH (US)'
+                      : 'AUTO'}
+                  </span>
+                </div>
+
+                {/* Live Interim Transcript or Prompt */}
+                <div className="min-h-[30px] px-2.5 py-1 rounded-lg bg-[#030812] border border-cyan-500/20 text-xs font-mono-hud flex items-center">
+                  {interimTranscript ? (
+                    <span className="text-cyan-200 animate-pulse font-medium">"{interimTranscript}"</span>
+                  ) : isListening ? (
+                    <span className="text-cyan-400/70 italic text-[11px]">Listening... speak in {speechLanguage === 'tanglish' ? 'Tanglish or Tamil' : speechLanguage === 'ta-IN' ? 'Tamil' : 'English'}...</span>
+                  ) : (
+                    <span className="text-slate-400 text-[11px]">Click microphone or Orb to speak in Tamil, English, or Tanglish</span>
+                  )}
+                </div>
+
+                {/* Primary Voice Toggle Button */}
+                <button
+                  type="button"
+                  onClick={toggleListening}
+                  className={`w-full py-2 px-3 rounded-lg border text-xs font-hud tracking-wider flex items-center justify-center gap-2 transition-all shadow-md ${
+                    isListening
+                      ? 'bg-rose-500/25 border-rose-500 text-rose-200 animate-pulse shadow-[0_0_15px_rgba(244,63,94,0.4)]'
+                      : 'bg-cyan-500/15 hover:bg-cyan-500/25 border-cyan-500/50 text-cyan-200 hover:shadow-[0_0_12px_rgba(0,212,255,0.3)]'
+                  }`}
+                >
+                  {isListening ? <MicOff className="w-4 h-4 text-rose-300" /> : <Mic className="w-4 h-4 text-cyan-400" />}
+                  <span>{isListening ? 'STOP RECORDING // PROCESS' : 'SPEAK DIRECTLY TO J.A.R.V.I.S.'}</span>
+                </button>
+
+                {/* Language Mode Selectors */}
+                <div className="grid grid-cols-4 gap-1 text-[10px] font-mono-hud pt-1 border-t border-cyan-500/15">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSpeechLanguage('tanglish');
+                      if (isListening) startListening();
+                    }}
+                    className={`py-1 px-1 rounded text-center transition-all ${
+                      speechLanguage === 'tanglish'
+                        ? 'bg-cyan-500/30 border border-cyan-400 text-cyan-200 font-bold'
+                        : 'bg-slate-900/40 border border-slate-700/50 text-slate-400 hover:text-cyan-300'
+                    }`}
+                    title="Tanglish: Mix of Tamil and English words"
+                  >
+                    TANGLISH
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSpeechLanguage('ta-IN');
+                      if (isListening) startListening();
+                    }}
+                    className={`py-1 px-1 rounded text-center transition-all ${
+                      speechLanguage === 'ta-IN'
+                        ? 'bg-cyan-500/30 border border-cyan-400 text-cyan-200 font-bold'
+                        : 'bg-slate-900/40 border border-slate-700/50 text-slate-400 hover:text-cyan-300'
+                    }`}
+                    title="Tamil: Pure Tamil speech input (தமிழ்)"
+                  >
+                    தமிழ்
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSpeechLanguage('en-US');
+                      if (isListening) startListening();
+                    }}
+                    className={`py-1 px-1 rounded text-center transition-all ${
+                      speechLanguage === 'en-US'
+                        ? 'bg-cyan-500/30 border border-cyan-400 text-cyan-200 font-bold'
+                        : 'bg-slate-900/40 border border-slate-700/50 text-slate-400 hover:text-cyan-300'
+                    }`}
+                    title="English: Standard English speech input"
+                  >
+                    ENGLISH
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setSpeechLanguage('auto');
+                      if (isListening) startListening();
+                    }}
+                    className={`py-1 px-1 rounded text-center transition-all ${
+                      speechLanguage === 'auto'
+                        ? 'bg-cyan-500/30 border border-cyan-400 text-cyan-200 font-bold'
+                        : 'bg-slate-900/40 border border-slate-700/50 text-slate-400 hover:text-cyan-300'
+                    }`}
+                    title="Auto: Automatically follows latest conversation language"
+                  >
+                    AUTO
+                  </button>
+                </div>
               </div>
             </div>
 
@@ -695,10 +972,21 @@ export default function App() {
       />
       <TasksModal
         isOpen={isTasksOpen}
-        onClose={() => setIsTasksOpen(false)}
+        onClose={() => {
+          setIsTasksOpen(false);
+          setHighlightTaskId(undefined);
+        }}
         onTaskChange={refreshSubsystems}
+        highlightTaskId={highlightTaskId}
       />
-      <NotesModal isOpen={isNotesOpen} onClose={() => setIsNotesOpen(false)} />
+      <NotesModal
+        isOpen={isNotesOpen}
+        onClose={() => {
+          setIsNotesOpen(false);
+          setSelectedNoteId(undefined);
+        }}
+        initialNoteId={selectedNoteId}
+      />
       <TimersModal
         isOpen={isTimersOpen}
         onClose={() => setIsTimersOpen(false)}
@@ -706,8 +994,12 @@ export default function App() {
       />
       <MemoryModal
         isOpen={isMemoryOpen}
-        onClose={() => setIsMemoryOpen(false)}
+        onClose={() => {
+          setIsMemoryOpen(false);
+          setMemorySearchInitial(undefined);
+        }}
         onMemoryUpdate={refreshSubsystems}
+        initialQuery={memorySearchInitial}
       />
       <SettingsModal
         isOpen={isSettingsOpen}

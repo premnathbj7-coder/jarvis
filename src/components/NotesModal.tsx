@@ -12,9 +12,10 @@ interface Note {
 interface NotesModalProps {
   isOpen: boolean;
   onClose: () => void;
+  initialNoteId?: string;
 }
 
-export const NotesModal: React.FC<NotesModalProps> = ({ isOpen, onClose }) => {
+export const NotesModal: React.FC<NotesModalProps> = ({ isOpen, onClose, initialNoteId }) => {
   const [notes, setNotes] = useState<Note[]>([]);
   const [title, setTitle] = useState('');
   const [content, setContent] = useState('');
@@ -35,8 +36,13 @@ export const NotesModal: React.FC<NotesModalProps> = ({ isOpen, onClose }) => {
           const data = await res.json();
           if (Array.isArray(data)) {
             setNotes(data);
-            if (data.length > 0 && !selectedNote) {
-              setSelectedNote(data[0]);
+            if (data.length > 0) {
+              if (initialNoteId) {
+                const target = data.find((n: Note) => n.id === initialNoteId);
+                setSelectedNote(target || data[0]);
+              } else if (!selectedNote) {
+                setSelectedNote(data[0]);
+              }
             }
           }
         }
@@ -81,7 +87,16 @@ export const NotesModal: React.FC<NotesModalProps> = ({ isOpen, onClose }) => {
     if (isOpen) {
       fetchNotes();
     }
-  }, [isOpen]);
+  }, [isOpen, initialNoteId]);
+
+  useEffect(() => {
+    if (initialNoteId && notes.length > 0) {
+      const target = notes.find((n) => n.id === initialNoteId);
+      if (target) {
+        setSelectedNote(target);
+      }
+    }
+  }, [initialNoteId, notes]);
 
   const addNote = async (e: React.FormEvent) => {
     e.preventDefault();
